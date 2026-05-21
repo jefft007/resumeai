@@ -1,44 +1,71 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { FormsModule } from '@angular/forms';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 
-import { ResumeUploadComponent } from './resume-upload.component';
+@Component({
+  selector: 'app-resume-upload',
+  templateUrl: './resume-upload.component.html',
+  styleUrls: ['./resume-upload.component.css']
+})
+export class ResumeUploadComponent {
 
-describe('ResumeUploadComponent', () => {
+  constructor(private http: HttpClient) {}
 
-  let component: ResumeUploadComponent;
-  let fixture: ComponentFixture<ResumeUploadComponent>;
+  // ================= API URL =================
+  apiUrl = 'https://resumeai-2ai9.onrender.com';
 
-  beforeEach(async () => {
+  // ================= UI =================
+  isLoading: boolean = false;
 
-    await TestBed.configureTestingModule({
+  // ================= FILE =================
+  selectedFile: File | null = null;
 
-      declarations: [
-        ResumeUploadComponent
-      ],
+  // ================= RESULT =================
+  analysisResult: any = null;
 
-      imports: [
-        HttpClientTestingModule,
-        FormsModule
-      ],
+  // ================= FILE SELECT =================
+  onFileSelected(event: any) {
+    this.selectedFile = event.target.files[0];
+  }
 
-      schemas: [
-        NO_ERRORS_SCHEMA
-      ]
+  // ================= UPLOAD =================
+  uploadResume() {
 
-    }).compileComponents();
+    if (!this.selectedFile) {
+      alert('Please select a PDF resume');
+      return;
+    }
 
-    fixture = TestBed.createComponent(ResumeUploadComponent);
+    const formData = new FormData();
 
-    component = fixture.componentInstance;
+    formData.append('resume', this.selectedFile);
 
-    fixture.detectChanges();
+    this.isLoading = true;
 
-  });
+    this.http.post(
+      `${this.apiUrl}/analyze`,
+      formData
+    ).subscribe({
 
-  it('should create', () => {
-    expect(component).toBeTruthy();
-  });
+      next: (res: any) => {
 
-});
+        console.log(res);
+
+        this.analysisResult = res;
+
+        this.isLoading = false;
+      },
+
+      error: (err) => {
+
+        console.log(err);
+
+        alert('Backend error');
+
+        this.isLoading = false;
+      }
+
+    });
+
+  }
+
+}
