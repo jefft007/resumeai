@@ -5,12 +5,6 @@ import requests
 import json
 import re
 import os
-from dotenv import load_dotenv
-
-# =========================
-# INIT
-# =========================
-load_dotenv()
 
 app = Flask(__name__)
 CORS(app, origins=["*"])
@@ -203,3 +197,4 @@ def interview_prep():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+    print("🔥 Flask app started successfully")
