@@ -52,14 +52,14 @@ export class ResumeService {
   // ANALYZE
   // =====================
   analyzeResume(file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('resume', file);
+  const formData = new FormData();
+  formData.append('resume', file);
 
-    return this.http.post(`${this.baseUrl}/analyze`, formData).pipe(
-      tap(res => this.analysisResultSubject.next(res)),
-      catchError(err => throwError(() => err))
-    );
-  }
+  return this.http.post(
+    `${this.baseUrl}/analyze`,
+    formData
+  );
+}
 
   // =====================
   // REWRITE

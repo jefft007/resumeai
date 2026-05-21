@@ -44,18 +44,16 @@ def call_llm_json(prompt):
             },
             json={
                 "model": "meta-llama/llama-3-8b-instruct",
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ]
+                "messages": [{"role": "user", "content": prompt}]
             },
             timeout=30
         )
 
         result = response.json()
 
-        # safety check
         if "choices" not in result:
-            raise Exception(result)
+            print("API ERROR:", result)
+            return {"error": "OpenRouter failed", "details": result}
 
         content = result["choices"][0]["message"]["content"]
 
@@ -66,7 +64,8 @@ def call_llm_json(prompt):
         return json.loads(content)
 
     except Exception as e:
-        print("LLM Error:", e)
+        print("LLM ERROR:", str(e))
+        return {"error": str(e)}
 
         # =========================
         # FALLBACK (SAFE RESPONSE)
