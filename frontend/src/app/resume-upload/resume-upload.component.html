@@ -1,0 +1,790 @@
+<div class="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 text-slate-800 dark:text-slate-100 flex flex-col font-sans">
+  
+  <!-- Navigation Header (Hidden in Print) -->
+  <header class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 no-print transition-colors duration-300">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/20">
+          📄
+        </div>
+        <div>
+          <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
+            ResuAI
+          </h1>
+          <p class="text-[10px] text-slate-400 dark:text-slate-500 font-medium tracking-wider uppercase">ATS Optimization Engine</p>
+        </div>
+      </div>
+
+      <!-- Action Area -->
+      <div class="flex items-center gap-4">
+        
+        <!-- Dark Mode Toggle -->
+        <button 
+          (click)="toggleDarkMode()" 
+          class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100 transition duration-200"
+          title="Toggle Theme"
+        >
+          <!-- Sun Icon -->
+          <svg *ngIf="isDarkMode" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+          </svg>
+          <!-- Moon Icon -->
+          <svg *ngIf="!isDarkMode" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        </button>
+
+        <!-- User Authentication Section -->
+        <div class="flex items-center gap-2 border-l border-slate-200 dark:border-slate-800 pl-4">
+          <ng-container *ngIf="currentUser; else guestUser">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shadow-md">
+                {{ currentUser.name.charAt(0).toUpperCase() }}
+              </div>
+              <div class="hidden md:block text-left">
+                <p class="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-3">{{ currentUser.name }}</p>
+                <span class="text-[10px] text-slate-400">@{{ currentUser.username }}</span>
+              </div>
+              <button 
+                (click)="logout()" 
+                class="ml-2 text-xs font-medium text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 transition"
+              >
+                Sign Out
+              </button>
+            </div>
+          </ng-container>
+          <ng-template #guestUser>
+            <button 
+              (click)="openAuth('login')" 
+              class="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-1.5 transition"
+            >
+              Sign In
+            </button>
+            <button 
+              (click)="openAuth('signup')" 
+              class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/10 hover:shadow-blue-500/20 transition"
+            >
+              Sign Up
+            </button>
+          </ng-template>
+        </div>
+      </div>
+      
+    </div>
+  </header>
+
+  <!-- Sidebar + Main content split layout -->
+  <div class="flex-grow flex w-full max-w-7xl mx-auto items-stretch">
+    
+    <!-- Collapsible History Sidebar (Hidden in Print, and if user is logged out) -->
+    <aside *ngIf="currentUser" class="w-64 border-r border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/30 p-5 flex flex-col gap-4 no-print shrink-0 hidden lg:flex transition-colors duration-300">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Analysis History</h3>
+        <span class="bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
+          {{ historyList.length }}
+        </span>
+      </div>
+
+      <div class="flex-grow overflow-y-auto flex flex-col gap-2 pr-1 max-h-[calc(100vh-12rem)]">
+        <div *ngIf="historyList.length === 0" class="text-center py-8 text-slate-400 text-sm">
+          No records yet.<br>Upload a resume to begin saving!
+        </div>
+
+        <button 
+          *ngFor="let item of historyList"
+          (click)="selectHistoryItem(item)"
+          class="text-left p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800/40 hover:bg-white dark:hover:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 transition duration-200 flex items-center justify-between group"
+          [ngClass]="{'border-blue-500 dark:border-blue-500 bg-white dark:bg-slate-900 shadow-md shadow-blue-500/5': analysisResult?.extracted_text === item.analysis.extracted_text}"
+        >
+          <div class="overflow-hidden mr-2">
+            <h4 class="text-xs font-semibold truncate text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+              {{ item.filename }}
+            </h4>
+            <span class="text-[10px] text-slate-400">{{ item.date }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold px-1.5 py-0.5 rounded"
+              [ngClass]="{
+                'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400': item.analysis.ats_score >= 75,
+                'bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400': item.analysis.ats_score >= 50 && item.analysis.ats_score < 75,
+                'bg-rose-100 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400': item.analysis.ats_score < 50
+              }"
+            >
+              {{ item.analysis.ats_score }}
+            </span>
+            <button 
+              (click)="deleteHistoryItem($event, item.id)"
+              class="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-100 dark:hover:bg-slate-850 rounded text-slate-400 hover:text-rose-500 transition"
+              title="Delete log"
+            >
+              🗑️
+            </button>
+          </div>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Pane -->
+    <main class="flex-grow p-6 md:p-8 overflow-y-auto max-w-full">
+
+      <!-- Upload View (When no analysis has occurred) -->
+      <div *ngIf="!analysisResult && !isLoading" class="max-w-2xl mx-auto py-12 fade-in">
+        
+        <!-- Welcome Card -->
+        <div class="text-center mb-8">
+          <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white sm:text-4xl">
+            Optimize Your Resume with AI
+          </h2>
+          <p class="mt-3 text-slate-500 dark:text-slate-400 text-lg">
+            Upload your resume to calculate your ATS match, optimize keywords, rewrite sections dynamically, and build custom interview questions.
+          </p>
+        </div>
+
+        <div class="glass-panel rounded-3xl shadow-xl overflow-hidden p-8 border border-slate-200 dark:border-slate-800 transition">
+          <div class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl p-10 text-center bg-slate-50/50 dark:bg-slate-900/20 hover:bg-blue-50/20 dark:hover:bg-blue-950/5 transition duration-300 flex flex-col items-center">
+            
+            <div class="text-6xl mb-4 select-none">
+              📄
+            </div>
+
+            <h3 class="text-xl font-bold text-slate-800 dark:text-slate-200 mb-1">
+              Drag & Drop Resume PDF
+            </h3>
+            
+            <p class="text-slate-400 dark:text-slate-500 text-xs mb-6">
+              Only PDF format is supported (Max size 5MB)
+            </p>
+
+            <input
+              type="file"
+              accept=".pdf"
+              (change)="onFileSelected($event)"
+              id="resume-file-input"
+              class="hidden"
+            />
+            
+            <label 
+              for="resume-file-input"
+              class="cursor-pointer mb-6 px-6 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-sm border border-slate-300/50 dark:border-slate-700 transition"
+            >
+              Choose PDF File
+            </label>
+
+            <!-- Show selected file label -->
+            <div *ngIf="selectedFile" class="mb-6 flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-xl text-xs font-semibold border border-blue-100 dark:border-blue-900/30">
+              <span>Selected: {{ selectedFile.name }} ({{ (selectedFile.size/1024).toFixed(0) }} KB)</span>
+            </div>
+
+            <button
+              (click)="uploadResume()"
+              [disabled]="!selectedFile"
+              class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-600 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 transition duration-300"
+            >
+              Analyze Resume
+            </button>
+          </div>
+        </div>
+
+        <!-- Guest Prompt -->
+        <div *ngIf="!currentUser" class="mt-8 text-center bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 text-sm text-slate-500 dark:text-slate-400">
+          🔑 <strong class="text-slate-700 dark:text-slate-300">Tip:</strong> <button (click)="openAuth('login')" class="text-blue-600 dark:text-blue-400 font-bold hover:underline">Sign In</button> or <button (click)="openAuth('signup')" class="text-blue-600 dark:text-blue-400 font-bold hover:underline">Sign Up</button> to preserve your analysis results in the History list!
+        </div>
+
+      </div>
+
+      <!-- Loading State Panel -->
+      <div *ngIf="isLoading" class="max-w-md mx-auto py-24 text-center fade-in">
+        <div class="relative w-20 h-20 mx-auto mb-8">
+          <div class="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
+          <div class="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
+          <div class="absolute inset-0 flex items-center justify-center text-3xl">✨</div>
+        </div>
+        <h3 class="text-xl font-bold mb-2">Analyzing Resume...</h3>
+        <p class="text-slate-500 dark:text-slate-400 text-sm">
+          Our AI model is extracting text components, grading layout suitability, classifying skills, and mapping ATS ranking metrics.
+        </p>
+      </div>
+
+      <!-- Main Dashboard Interface (When Resume is analyzed) -->
+      <div *ngIf="analysisResult && !isLoading" class="fade-in">
+        
+        <!-- Tab Bar Navigation (Hidden in Print) -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pb-6 border-b border-slate-200 dark:border-slate-800 gap-4 mb-8 no-print">
+          
+          <!-- Navigation Tabs -->
+          <div class="flex flex-wrap items-center bg-slate-100/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/60 p-1.5 rounded-2xl max-w-full">
+            <button 
+              (click)="activeTab = 'dashboard'"
+              [class]="activeTab === 'dashboard' ? 'tab-active' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl transition duration-200'"
+            >
+              📈 ATS Score
+            </button>
+            <button 
+              (click)="activeTab = 'rewrite'"
+              [class]="activeTab === 'rewrite' ? 'tab-active' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl transition duration-200'"
+            >
+              ✍️ AI Rewriter
+            </button>
+            <button 
+              (click)="activeTab = 'jobs'"
+              [class]="activeTab === 'jobs' ? 'tab-active' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl transition duration-200'"
+            >
+              💼 Jobs Match
+            </button>
+            <button 
+              (click)="activeTab = 'interview'; getInterviewQuestions()"
+              [class]="activeTab === 'interview' ? 'tab-active' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl transition duration-200'"
+            >
+              💬 Interview Prep
+            </button>
+          </div>
+
+          <!-- Utility Options (Upload alternative, download PDF) -->
+          <div class="flex items-center gap-3">
+            <button 
+              (click)="downloadPDF()" 
+              class="flex items-center gap-2 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-350 px-4 py-2.5 rounded-xl font-semibold text-sm transition"
+            >
+              📥 Download Report
+            </button>
+            <button 
+              (click)="analysisResult = null; selectedFile = null" 
+              class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl transition"
+            >
+              🔄 Upload New
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT 1: ATS SCORE DASHBOARD -->
+        <div *ngIf="activeTab === 'dashboard'" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          <!-- Column 1: Progress score circle -->
+          <div class="glass-panel p-6 rounded-3xl shadow-xl flex flex-col items-center justify-between text-center min-h-[350px]">
+            <h3 class="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider self-start">ATS score rating</h3>
+            
+            <!-- Animated Circle -->
+            <div class="relative w-44 h-44 my-6 flex items-center justify-center select-none">
+              <!-- Background Circle track -->
+              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                <circle 
+                  cx="50" cy="50" r="40" 
+                  fill="transparent" 
+                  stroke-width="8" 
+                  class="stroke-slate-100 dark:stroke-slate-800 transition-colors duration-300"
+                />
+                
+                <!-- Foreground glowing progress circle -->
+                <circle 
+                  cx="50" cy="50" r="40" 
+                  fill="transparent" 
+                  stroke-width="8" 
+                  stroke-linecap="round"
+                  class="circle-progress"
+                  [ngClass]="{
+                    'stroke-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]': analysisResult.ats_score >= 75,
+                    'stroke-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.3)]': analysisResult.ats_score >= 50 && analysisResult.ats_score < 75,
+                    'stroke-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.3)]': analysisResult.ats_score < 50
+                  }"
+                  [style.strokeDashoffset]="251.2 - (251.2 * analysisResult.ats_score) / 100"
+                />
+              </svg>
+              
+              <!-- Core numerical details -->
+              <div class="absolute flex flex-col items-center">
+                <span class="text-4xl font-extrabold tracking-tight">
+                  {{ analysisResult.ats_score }}%
+                </span>
+                <span class="text-[10px] font-bold uppercase tracking-wider mt-0.5"
+                  [ngClass]="{
+                    'text-emerald-500': analysisResult.ats_score >= 75,
+                    'text-amber-500': analysisResult.ats_score >= 50 && analysisResult.ats_score < 75,
+                    'text-rose-500': analysisResult.ats_score < 50
+                  }"
+                >
+                  <span *ngIf="analysisResult.ats_score >= 75">Excellent Fit</span>
+                  <span *ngIf="analysisResult.ats_score >= 50 && analysisResult.ats_score < 75">Needs Polish</span>
+                  <span *ngIf="analysisResult.ats_score < 50">Weak Match</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Score rating summary -->
+            <p class="text-xs text-slate-500 dark:text-slate-400 max-w-[240px]">
+              This score was generated matching key skills against generic ATS evaluation rules for modern software organizations.
+            </p>
+          </div>
+
+          <!-- Column 2 & 3: Best fit & suggestions -->
+          <div class="lg:col-span-2 flex flex-col gap-6">
+            
+            <!-- Best role recommendation -->
+            <div class="glass-panel p-6 rounded-3xl shadow-xl flex items-center justify-between border-l-4 border-l-blue-500">
+              <div>
+                <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Best Suited Job Role</span>
+                <h3 class="text-2xl font-extrabold text-slate-800 dark:text-white mt-1">
+                  {{ analysisResult.best_suited_role }}
+                </h3>
+              </div>
+              <span class="text-3xl px-4 py-3 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/30">💼</span>
+            </div>
+
+            <!-- Improvements list -->
+            <div class="glass-panel p-6 rounded-3xl shadow-xl flex-grow">
+              <h3 class="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4">Critical Improvements Needed</h3>
+              
+              <ul class="flex flex-col gap-3">
+                <li *ngFor="let advice of analysisResult.improvements" class="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                  <span class="text-rose-500 dark:text-rose-400 mt-0.5 font-bold">⚠️</span>
+                  <span>{{ advice }}</span>
+                </li>
+              </ul>
+            </div>
+
+          </div>
+
+          <!-- Skill tags & dynamic workspace (Full width row) -->
+          <div class="lg:col-span-3 glass-panel p-6 rounded-3xl shadow-xl">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 gap-4 mb-6">
+              <div>
+                <h3 class="text-lg font-bold">Interactive Skills Assessment</h3>
+                <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Add, remove, or complete skills. Changes dynamically updates match ratios in the Jobs tab!</p>
+              </div>
+
+              <!-- Skill Adder form -->
+              <div class="flex items-center gap-2 max-w-full">
+                <input 
+                  type="text" 
+                  placeholder="Type skill tag (e.g. AWS)..."
+                  [(ngModel)]="newSkillInput"
+                  (keyup.enter)="addSkill()"
+                  class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors w-44"
+                />
+                <button 
+                  (click)="addSkill()"
+                  class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition"
+                >
+                  Add Skill
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-6">
+              
+              <!-- Detected Skills -->
+              <div>
+                <h4 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Detected Skills ({{ userSkills.length }})</h4>
+                <div class="flex flex-wrap gap-2">
+                  <span 
+                    *ngFor="let skill of userSkills"
+                    class="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30 px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-700 dark:hover:text-rose-400 hover:border-rose-100 dark:hover:border-rose-900/30 cursor-pointer transition"
+                    (click)="removeSkill(skill)"
+                    title="Click to remove"
+                  >
+                    {{ skill }} <span class="text-[9px] opacity-60">✕</span>
+                  </span>
+                  <div *ngIf="userSkills.length === 0" class="text-slate-400 text-xs py-2">
+                    No active skills. Type above to add keywords.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Missing Skills (Clicking adds them) -->
+              <div>
+                <h4 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                  Recommended Missing Keywords
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                  <button 
+                    *ngFor="let skill of analysisResult.missing_skills"
+                    [disabled]="userSkills.includes(skill)"
+                    (click)="newSkillInput = skill; addSkill()"
+                    class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 disabled:opacity-50 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition flex items-center gap-1.5"
+                    title="Click to add to your skills"
+                  >
+                    <span>+</span> {{ skill }}
+                  </button>
+                  <div *ngIf="analysisResult.missing_skills.length === 0" class="text-slate-400 text-xs py-2">
+                    All recommended skills are already listed. Excellent work!
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- TAB CONTENT 2: AI RESUME REWRITER -->
+        <div *ngIf="activeTab === 'rewrite'" class="fade-in space-y-6">
+          <div class="glass-panel p-6 rounded-3xl shadow-xl">
+            <h3 class="text-lg font-bold mb-1">Tailor Resume for Specific Jobs</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Provide target job posting details below, and our LLM will optimize your resume text dynamically.</p>
+            
+            <div class="mt-4 flex flex-col gap-3">
+              <textarea 
+                rows="4" 
+                placeholder="Paste the target job description here..."
+                [(ngModel)]="jobDescription"
+                class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-2xl p-4 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors w-full resize-none text-slate-700 dark:text-slate-350 leading-relaxed"
+              ></textarea>
+              
+              <button 
+                (click)="getRewrite()"
+                [disabled]="rewriting || !jobDescription.trim()"
+                class="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-600 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg transition duration-200 self-end flex items-center gap-2"
+              >
+                <span *ngIf="rewriting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                ✨ Optimize Resume
+              </button>
+            </div>
+          </div>
+
+          <!-- Rewrite Output Panel (Before & After) -->
+          <div *ngIf="rewriteResult" class="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-in">
+            
+            <!-- Original Panel -->
+            <div class="glass-panel p-6 rounded-3xl shadow-xl flex flex-col max-h-[500px]">
+              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">Original Text Sample</h4>
+              <div class="overflow-y-auto pr-2 leading-7 text-xs text-slate-500 dark:text-slate-400 whitespace-pre-line">
+                {{ analysisResult.extracted_text }}
+              </div>
+            </div>
+
+            <!-- Rewritten Panel -->
+            <div class="glass-panel p-6 rounded-3xl shadow-xl flex flex-col max-h-[500px] border-t-4 border-t-emerald-500 relative">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Optimized Resume</h4>
+                
+                <!-- Actions -->
+                <div class="flex items-center gap-2">
+                  <span class="bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full">Tailored AI Output</span>
+                </div>
+              </div>
+              <div class="overflow-y-auto pr-2 leading-7 text-xs text-slate-700 dark:text-slate-350" [innerHTML]="rewriteResult.rewritten_resume | markdown">
+              </div>
+            </div>
+
+            <!-- Detailed Changes Made list -->
+            <div class="lg:col-span-2 glass-panel p-6 rounded-3xl shadow-xl">
+              <h4 class="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4">Core Tailoring Changes Applied</h4>
+              <ul class="flex flex-col gap-3">
+                <li *ngFor="let change of rewriteResult.changes_made" class="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+                  <span class="text-emerald-500 mt-0.5">✓</span>
+                  <span>{{ change }}</span>
+                </li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- TAB CONTENT 3: JOB MATCH ENGINE -->
+        <div *ngIf="activeTab === 'jobs'" class="fade-in space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 gap-4">
+            <div>
+              <h3 class="text-xl font-bold">Curated Career Path Recommendations</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Evaluated against the skills listed in your Active Skills tab.</p>
+            </div>
+            
+            <button 
+              (click)="activeTab = 'dashboard'"
+              class="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline self-start"
+            >
+              Configure skills key list →
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div 
+              *ngFor="let job of recommendedJobs" 
+              class="glass-panel p-6 rounded-3xl shadow-lg border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-800 transition duration-300 flex flex-col justify-between"
+            >
+              <div>
+                <!-- Job Header -->
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex gap-3">
+                    <span class="text-3xl p-3 bg-slate-100 dark:bg-slate-900 rounded-2xl">{{ job.logo }}</span>
+                    <div>
+                      <h4 class="text-lg font-bold text-slate-800 dark:text-white">{{ job.title }}</h4>
+                      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">{{ job.company }}</p>
+                    </div>
+                  </div>
+                  
+                  <!-- Match Percent Tag -->
+                  <div class="text-right">
+                    <span 
+                      class="text-xs font-extrabold px-3 py-1 rounded-full"
+                      [ngClass]="{
+                        'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400': job.matchScore >= 70,
+                        'bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400': job.matchScore >= 40 && job.matchScore < 70,
+                        'bg-rose-100 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400': job.matchScore < 40
+                      }"
+                    >
+                      {{ job.matchScore }}% Match
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Specs -->
+                <div class="flex items-center gap-4 text-[11px] text-slate-400 dark:text-slate-500 font-semibold mb-4">
+                  <span>📍 {{ job.location }}</span>
+                  <span>💰 {{ job.salary }}</span>
+                </div>
+
+                <!-- Description -->
+                <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-5">
+                  {{ job.description }}
+                </p>
+
+                <!-- Key details of skill matches -->
+                <div class="space-y-3 mb-6">
+                  <div>
+                    <h5 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Matched Skills</h5>
+                    <div class="flex flex-wrap gap-1.5">
+                      <span *ngFor="let skill of job.matchedSkills" class="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 text-[10px] px-2 py-0.5 rounded-md font-semibold border border-emerald-100/50 dark:border-emerald-900/10">
+                        {{ skill }}
+                      </span>
+                      <span *ngIf="job.matchedSkills.length === 0" class="text-slate-400 text-[10px]">No skills matched yet.</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h5 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Missing Skills</h5>
+                    <div class="flex flex-wrap gap-1.5">
+                      <span *ngFor="let skill of job.missingSkills" class="bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 text-[10px] px-2 py-0.5 rounded-md font-medium border border-slate-200/50 dark:border-slate-800/10">
+                        {{ skill }}
+                      </span>
+                      <span *ngIf="job.missingSkills.length === 0" class="text-emerald-500 text-[10px] font-bold">✓ 100% matched! Ready to apply.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Button actions -->
+              <button 
+                class="w-full bg-slate-100 dark:bg-slate-900 hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white dark:hover:text-white text-slate-700 dark:text-slate-300 text-xs font-bold py-2.5 rounded-xl border border-slate-300 dark:border-slate-800 transition duration-200"
+                (click)="jobDescription = job.description; activeTab = 'rewrite'"
+              >
+                Tailor Resume for this Job
+              </button>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT 4: INTERVIEW PREP -->
+        <div *ngIf="activeTab === 'interview'" class="fade-in space-y-6 max-w-4xl mx-auto">
+          
+          <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <h3 class="text-xl font-bold">AI Mock Interview Prep</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Custom behavior and technical questions prepared based on your profile summary.</p>
+            </div>
+            
+            <button 
+              *ngIf="interviewPrepList.length > 0" 
+              (click)="getInterviewQuestions()" 
+              class="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              🔄 Refresh Questions
+            </button>
+          </div>
+
+          <!-- Spinner Loading -->
+          <div *ngIf="loadingInterview" class="text-center py-20">
+            <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-slate-500 dark:text-slate-400 text-sm font-semibold">Generating tailored technical & behavioral interview questions...</p>
+          </div>
+
+          <!-- Accordion Question list -->
+          <div *ngIf="interviewPrepList.length > 0 && !loadingInterview" class="space-y-4">
+            <div 
+              *ngFor="let item of interviewPrepList; let i = index" 
+              class="glass-panel rounded-2xl shadow border border-slate-200 dark:border-slate-800 overflow-hidden"
+            >
+              <!-- Accordion Header -->
+              <button 
+                (click)="toggleInterviewQuestion(i)"
+                class="w-full text-left p-5 flex items-center justify-between hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition"
+              >
+                <div class="flex items-center gap-3">
+                  <span 
+                    class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                    [ngClass]="{
+                      'bg-indigo-100 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400': item.type === 'Technical',
+                      'bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400': item.type !== 'Technical'
+                    }"
+                  >
+                    {{ item.type }}
+                  </span>
+                  <h4 class="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    {{ item.question }}
+                  </h4>
+                </div>
+
+                <span class="text-slate-400 font-bold transition-transform duration-200" [ngClass]="{'rotate-180': activeInterviewQuestion === i}">
+                  ▼
+                </span>
+              </button>
+
+              <!-- Accordion Answer block -->
+              <div 
+                *ngIf="activeInterviewQuestion === i" 
+                class="bg-slate-50/50 dark:bg-slate-900/10 border-t border-slate-200 dark:border-slate-800 p-5 text-sm text-slate-600 dark:text-slate-400 leading-relaxed fade-in"
+              >
+                <strong class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Recommended Response Structure:</strong>
+                {{ item.answer }}
+              </div>
+
+            </div>
+          </div>
+
+          <div *ngIf="interviewPrepList.length === 0 && !loadingInterview" class="text-center py-20">
+            🤖 <p class="text-slate-500 text-sm mt-2">Questions will load automatically. Or click to manually generate them.</p>
+            <button 
+              (click)="getInterviewQuestions()"
+              class="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-6 py-3 rounded-xl shadow"
+            >
+              Generate Interview Questions
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Authentication Backdrop Modal (Hidden in Print) -->
+  <div 
+    *ngIf="showAuthModal" 
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm no-print fade-in"
+    (click)="closeAuth()"
+  >
+    <div 
+      class="glass-panel w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-8 relative border border-slate-200 dark:border-slate-850"
+      (click)="$event.stopPropagation()"
+    >
+      <button 
+        (click)="closeAuth()" 
+        class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+      >
+        ✕
+      </button>
+
+      <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2">
+        {{ authMode === 'login' ? 'Welcome Back' : 'Create Account' }}
+      </h3>
+      
+      <p class="text-xs text-slate-400 dark:text-slate-500 mb-6">
+        {{ authMode === 'login' ? 'Sign in to access saved analyses logs.' : 'Sign up to keep history records in browser.' }}
+      </p>
+
+      <form (submit)="handleAuthSubmit(); $event.preventDefault()" class="space-y-4">
+        
+        <div>
+          <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Username</label>
+          <input 
+            type="text" 
+            placeholder="e.g. jeff_dev"
+            [(ngModel)]="authUsername"
+            name="username"
+            required
+            class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          />
+        </div>
+
+        <div *ngIf="authMode === 'signup'">
+          <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Full Name</label>
+          <input 
+            type="text" 
+            placeholder="e.g. Jeff Taylor"
+            [(ngModel)]="authName"
+            name="name"
+            required
+            class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          />
+        </div>
+
+        <button 
+          type="submit" 
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg transition"
+        >
+          {{ authMode === 'login' ? 'Sign In' : 'Sign Up' }}
+        </button>
+
+      </form>
+
+      <!-- Toggle Links -->
+      <div class="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
+        <span *ngIf="authMode === 'login'">
+          Don't have an account? 
+          <button (click)="authMode = 'signup'" class="text-blue-600 dark:text-blue-400 font-bold hover:underline">Sign Up</button>
+        </span>
+        <span *ngIf="authMode === 'signup'">
+          Already have an account? 
+          <button (click)="authMode = 'login'" class="text-blue-600 dark:text-blue-400 font-bold hover:underline">Sign In</button>
+        </span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Print-Only Page Layout (Invisible on screen, styled strictly for window.print() PDF generation) -->
+  <div class="print-only print-card p-10 max-w-4xl mx-auto space-y-8 bg-white text-black">
+    
+    <div class="border-b-2 border-black pb-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-extrabold tracking-tight">AI Resume Evaluation Report</h1>
+        <p class="text-xs text-gray-500 mt-1">Generated by ResuAI ATS Optimization Engine</p>
+      </div>
+      <div class="text-right">
+        <div class="text-3xl font-black">{{ analysisResult?.ats_score }}%</div>
+        <div class="text-[10px] font-bold uppercase tracking-wider">ATS Score</div>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="text-xl font-bold uppercase border-b border-gray-300 pb-1 mb-3">Professional Suitability</h2>
+      <p class="text-sm font-semibold">Best Suited Job Role: <span class="text-blue-700">{{ analysisResult?.best_suited_role }}</span></p>
+    </div>
+
+    <div>
+      <h2 class="text-xl font-bold uppercase border-b border-gray-300 pb-1 mb-3">Identified Skill Alignment</h2>
+      <div class="grid grid-cols-2 gap-6">
+        <div>
+          <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Detected Skills</h3>
+          <ul class="list-disc pl-5 text-xs space-y-1">
+            <li *ngFor="let skill of userSkills">{{ skill }}</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Recommended Missing Keywords</h3>
+          <ul class="list-disc pl-5 text-xs space-y-1">
+            <li *ngFor="let skill of analysisResult?.missing_skills">{{ skill }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="text-xl font-bold uppercase border-b border-gray-300 pb-1 mb-3">Required Resume Polish & Improvements</h2>
+      <ul class="list-decimal pl-5 text-xs space-y-2">
+        <li *ngFor="let advice of analysisResult?.improvements">{{ advice }}</li>
+      </ul>
+    </div>
+
+    <!-- If rewritten resume exists, print it side-by-side or on a separate page -->
+    <div *ngIf="rewriteResult" class="page-break-before" style="page-break-before: always;">
+      <h2 class="text-xl font-bold uppercase border-b border-gray-300 pb-1 mb-4">Tailored Resume (AI Optimization)</h2>
+      <div class="text-xs leading-relaxed" [innerHTML]="rewriteResult?.rewritten_resume | markdown"></div>
+    </div>
+
+  </div>
+
+</div>

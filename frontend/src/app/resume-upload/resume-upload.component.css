@@ -1,0 +1,99 @@
+/* Progress Circle Animation */
+.circle-progress {
+  stroke-dasharray: 251.2;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dark .glass-panel {
+  background: rgba(17, 24, 39, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tab button active state */
+.tab-active {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.dark .tab-active {
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.2);
+}
+
+/* Hide print layout when showing standard view */
+.print-only {
+  display: none;
+}
+
+/* PDF/Print media controls */
+@media print {
+  /* Hide every part of the web application */
+  html, body {
+    background: #ffffff !important;
+    color: #111111 !important;
+    font-size: 12pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .no-print,
+  button,
+  input,
+  textarea,
+  nav,
+  header,
+  .history-sidebar,
+  .auth-modal,
+  .web-footer,
+  .upload-zone,
+  .tabs-container {
+    display: none !important;
+  }
+
+  /* Expand print contents to fill screen */
+  .print-only {
+    display: block !important;
+    width: 100% !important;
+    margin: 1.5in !important;
+  }
+
+  .print-card {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: #000000 !important;
+  }
+
+  h1, h2, h3, h4 {
+    page-break-after: avoid;
+  }
+
+  p, li, blockquote {
+    page-break-inside: avoid;
+  }
+}
