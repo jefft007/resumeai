@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject, of, throwError } from 'rxjs';
-import { tap, catchError } from 'rxjs/operators';
+import { Observable, BehaviorSubject } from 'rxjs';
 
 export interface User {
   username: string;
@@ -24,7 +23,7 @@ export interface Job {
 })
 export class ResumeService {
 
-  // ✅ BASE URL (Render backend)
+  // ✅ YOUR RENDER BACKEND
   private baseUrl = 'https://resumeai-2ai9.onrender.com';
 
   private currentUserSubject = new BehaviorSubject<User | null>(null);
@@ -37,6 +36,9 @@ export class ResumeService {
     this.loadUserFromStorage();
   }
 
+  // =====================
+  // STORAGE
+  // =====================
   private loadUserFromStorage(): void {
     try {
       const storedUser = localStorage.getItem('resume_user');
@@ -49,23 +51,20 @@ export class ResumeService {
   }
 
   // =====================
-  // ANALYZE
+  // ANALYZE RESUME
   // =====================
   analyzeResume(file: File): Observable<any> {
-  const formData = new FormData();
-  formData.append('resume', file);
+    const formData = new FormData();
+    formData.append('resume', file);
 
-  return this.http.post(
-    `${this.baseUrl}/analyze`,
-    formData
-  );
-}
+    return this.http.post<any>(`${this.baseUrl}/analyze`, formData);
+  }
 
   // =====================
-  // REWRITE
+  // REWRITE RESUME
   // =====================
   rewriteResume(resumeText: string, jobDescription: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/rewrite`, {
+    return this.http.post<any>(`${this.baseUrl}/rewrite`, {
       resume_text: resumeText,
       job_description: jobDescription
     });
@@ -75,7 +74,7 @@ export class ResumeService {
   // INTERVIEW PREP
   // =====================
   interviewPrep(resumeText: string, role: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/interview-prep`, {
+    return this.http.post<any>(`${this.baseUrl}/interview-prep`, {
       resume_text: resumeText,
       role
     });

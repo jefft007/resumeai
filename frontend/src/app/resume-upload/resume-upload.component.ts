@@ -1,251 +1,129 @@
-import { Component, OnInit } from '@angular/core';
-import { ResumeService, User } from '../resume.service';
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, BehaviorSubject, tap, catchError, of } from 'rxjs';
 
-@Component({
-  selector: 'app-resume-upload',
-  templateUrl: './resume-upload.component.html',
-  styleUrls: ['./resume-upload.component.css']
+export interface User {
+  username: string;
+  name: string;
+}
+
+export interface Job {
+  id: string;
+  title: string;
+  company: string;
+  logo: string;
+  location: string;
+  salary: string;
+  skills: string[];
+  description: string;
+}
+
+@Injectable({
+  providedIn: 'root'
 })
-export class ResumeUploadComponent implements OnInit {
+export class ResumeService {
 
-  activeTab: string = 'dashboard';
+  // ✅ Backend URL
+  private baseUrl = 'https://resumeai-2ai9.onrender.com';
 
-  selectedFile: File | null = null;
-  isLoading = false;
-  analysisResult: any = null;
+  // =====================
+  // STATE MANAGEMENT
+  // =====================
+  private currentUserSubject = new BehaviorSubject<User | null>(null);
+  currentUser$ = this.currentUserSubject.asObservable();
 
-  isDarkMode = false;
+  private analysisResultSubject = new BehaviorSubject<any | null>(null);
+  analysisResult$ = this.analysisResultSubject.asObservable();
 
-  showAuthModal = false;
-  authMode: 'login' | 'signup' = 'login';
-  authUsername = '';
-  authName = '';
-  currentUser: User | null = null;
+  constructor(private http: HttpClient) {
+    this.loadUserFromStorage();
+  }
 
-  historyList: any[] = [];
+  // =====================
+  // LOCAL STORAGE
+  // =====================
+  private loadUserFromStorage(): void {
+    try {
+      const storedUser = localStorage.getItem('resume_user');
 
-  jobDescription: string = '';
-  rewriting = false;
-  rewriteResult: any = null;
-
-  interviewPrepList: any[] = [];
-  loadingInterview = false;
-  activeInterviewQuestion: number | null = null;
-
-  userSkills: string[] = [];
-  newSkillInput = '';
-  recommendedJobs: any[] = [];
-
-  constructor(private resumeService: ResumeService) {}
-
-  ngOnInit(): void {
-
-    // Theme
-    this.isDarkMode = localStorage.getItem('theme') === 'dark';
-    this.applyTheme();
-
-    // User
-    this.resumeService.currentUser$.subscribe(user => {
-      this.currentUser = user;
-      this.historyList = user ? this.resumeService.getHistory() : [];
-    });
-
-    // Analysis result
-    this.resumeService.analysisResult$.subscribe(result => {
-      this.analysisResult = result;
-
-      if (result) {
-        this.userSkills = result?.detected_skills ? [...result.detected_skills] : [];
-        this.updateJobRecommendations();
-        this.rewriteResult = null;
-        this.interviewPrepList = [];
-      } else {
-        this.userSkills = [];
-        this.recommendedJobs = [];
+      if (storedUser) {
+        const user: User = JSON.parse(storedUser);
+        this.currentUserSubject.next(user);
       }
-    });
-  }
-
-  // ================= FILE =================
-  onFileSelected(event: any): void {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    if (file.type !== 'application/pdf') {
-      alert('Only PDF allowed');
-      return;
+    } catch (err) {
+      console.error('Invalid stored user, clearing storage');
+      localStorage.removeItem('resume_user');
     }
-
-    this.selectedFile = file;
   }
 
-  uploadResume(): void {
-    if (!this.selectedFile) {
-      alert('Select a PDF first');
-      return;
-    }
-
-    this.isLoading = true;
-
-    this.resumeService.analyzeResume(this.selectedFile).subscribe({
-      next: () => {
-        this.isLoading = false;
-        this.historyList = this.resumeService.getHistory();
-      },
-      error: (err) => {
-        console.error(err);
-        alert('Backend error / API not reachable');
-        this.isLoading = false;
-      }
-    });
-  }
-
-  // ================= THEME =================
-  toggleDarkMode(): void {
-    this.isDarkMode = !this.isDarkMode;
-    localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
-    this.applyTheme();
-  }
-
-  applyTheme(): void {
-    document.documentElement.classList.toggle('dark', this.isDarkMode);
-  }
-
-  // ================= AUTH =================
-  openAuth(mode: 'login' | 'signup') {
-    this.authMode = mode;
-    this.authUsername = '';
-    this.authName = '';
-    this.showAuthModal = true;
-  }
-
-  closeAuth() {
-    this.showAuthModal = false;
-  }
-
-  handleAuthSubmit(): void {
-    if (!this.authUsername.trim()) {
-      alert('Enter username');
-      return;
-    }
-
-    if (this.authMode === 'login') {
-      this.resumeService.login(this.authUsername).subscribe({
-        next: () => this.closeAuth(),
-        error: (e) => alert(e.message)
-      });
-    } else {
-      if (!this.authName.trim()) {
-        alert('Enter name');
-        return;
-      }
-
-      this.resumeService.signup(this.authUsername, this.authName).subscribe({
-        next: () => this.closeAuth()
-      });
-    }
+  setUser(user: User): void {
+    this.currentUserSubject.next(user);
+    localStorage.setItem('resume_user', JSON.stringify(user));
   }
 
   logout(): void {
-    this.resumeService.logout();
-    this.selectedFile = null;
-    this.analysisResult = null;
-    this.activeTab = 'dashboard';
+    this.currentUserSubject.next(null);
+    localStorage.removeItem('resume_user');
   }
 
-  // ================= HISTORY =================
-  loadHistory(): void {
-    this.historyList = this.resumeService.getHistory();
+  getCurrentUser(): User | null {
+    return this.currentUserSubject.value;
   }
 
-  selectHistoryItem(item: any): void {
-    this.resumeService.setAnalysisResult(item.analysis);
-    this.activeTab = 'dashboard';
+  // =====================
+  // RESUME ANALYSIS
+  // =====================
+  analyzeResume(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    return this.http.post<any>(`${this.baseUrl}/analyze`, formData).pipe(
+      tap(result => this.analysisResultSubject.next(result)),
+      catchError(err => {
+        console.error('Analyze Resume Error:', err);
+        return of(null);
+      })
+    );
   }
 
-  deleteHistoryItem(event: Event, id: string): void {
-    event.stopPropagation();
-    this.resumeService.deleteHistoryItem(id);
-    this.loadHistory();
+  // =====================
+  // REWRITE RESUME
+  // =====================
+  rewriteResume(resumeText: string, jobDescription: string): Observable<any> {
+    return this.http.post<any>(`${this.baseUrl}/rewrite`, {
+      resume_text: resumeText,
+      job_description: jobDescription
+    }).pipe(
+      catchError(err => {
+        console.error('Rewrite Error:', err);
+        return of(null);
+      })
+    );
   }
 
-  // ================= SKILLS =================
-  addSkill(): void {
-    const skill = this.newSkillInput.trim();
-    if (!skill) return;
-
-    if (!this.userSkills.includes(skill)) {
-      this.userSkills.push(skill);
-      this.updateJobRecommendations();
-    }
-
-    this.newSkillInput = '';
+  // =====================
+  // INTERVIEW PREP
+  // =====================
+  interviewPrep(resumeText: string, role: string): Observable<any> {
+    return this.http.post<any>(`${this.baseUrl}/interview-prep`, {
+      resume_text: resumeText,
+      role: role
+    }).pipe(
+      catchError(err => {
+        console.error('Interview Prep Error:', err);
+        return of(null);
+      })
+    );
   }
 
-  removeSkill(skill: string): void {
-    this.userSkills = this.userSkills.filter(s => s !== skill);
-    this.updateJobRecommendations();
+  // =====================
+  // UPDATE ANALYSIS MANUALLY (optional)
+  // =====================
+  setAnalysisResult(result: any): void {
+    this.analysisResultSubject.next(result);
   }
 
-  updateJobRecommendations(): void {
-    this.recommendedJobs = this.resumeService.getRecommendedJobs(this.userSkills);
-  }
-
-  // ================= AI FEATURES =================
-  getInterviewQuestions(): void {
-    if (!this.analysisResult?.extracted_text) return;
-
-    this.loadingInterview = true;
-    this.interviewPrepList = [];
-    this.activeInterviewQuestion = null;
-
-    this.resumeService.interviewPrep(
-      this.analysisResult.extracted_text,
-      this.analysisResult.best_suited_role || ''
-    ).subscribe({
-      next: (res) => {
-        this.interviewPrepList = res?.questions || [];
-        this.loadingInterview = false;
-      },
-      error: () => {
-        alert('Interview API failed');
-        this.loadingInterview = false;
-      }
-    });
-  }
-
-  toggleInterviewQuestion(index: number): void {
-    this.activeInterviewQuestion =
-      this.activeInterviewQuestion === index ? null : index;
-  }
-
-  getRewrite(): void {
-    if (!this.analysisResult?.extracted_text || !this.jobDescription.trim()) {
-      alert('Fill job description');
-      return;
-    }
-
-    this.rewriting = true;
-    this.rewriteResult = null;
-
-    this.resumeService.rewriteResume(
-      this.analysisResult.extracted_text,
-      this.jobDescription
-    ).subscribe({
-      next: (res) => {
-        this.rewriteResult = res;
-        this.rewriting = false;
-      },
-      error: () => {
-        alert('Rewrite failed');
-        this.rewriting = false;
-      }
-    });
-  }
-
-  // ================= PDF =================
-  downloadPDF(): void {
-    window.print();
+  getAnalysisResult(): any {
+    return this.analysisResultSubject.value;
   }
 }

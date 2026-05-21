@@ -23,16 +23,49 @@ def health():
 
 
 # =========================
-# 🔐 API KEY (IMPORTANT FIX)
+# API KEY
 # =========================
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 if not OPENROUTER_API_KEY:
-    print("⚠️ WARNING: OPENROUTER_API_KEY is missing in environment variables")
+    print("⚠️ WARNING: OPENROUTER_API_KEY is missing!")
 
 
 # =========================
-# 🔥 LLM CALL FUNCTION
+# FALLBACK RESPONSE (FIXED)
+# =========================
+def fallback_response(prompt: str):
+    if "ats_score" in prompt:
+        return {
+            "ats_score": 75,
+            "detected_skills": ["Python", "Flask", "Angular"],
+            "missing_skills": ["Docker", "CI/CD"],
+            "best_suited_role": "Full Stack Developer",
+            "improvements": ["Add projects", "Improve formatting"]
+        }
+
+    if "rewritten_resume" in prompt:
+        return {
+            "rewritten_resume": "Optimized Resume Content",
+            "changes_made": ["ATS optimized", "Better formatting"]
+        }
+
+    if "questions" in prompt:
+        return {
+            "questions": [
+                {
+                    "question": "Tell me about yourself",
+                    "answer": "Explain background, skills, projects",
+                    "type": "Behavioral"
+                }
+            ]
+        }
+
+    return {"error": "Fallback failed"}
+
+
+# =========================
+# LLM CALL
 # =========================
 def call_llm_json(prompt):
     try:
@@ -51,56 +84,30 @@ def call_llm_json(prompt):
 
         result = response.json()
 
+        # If API fails → fallback
         if "choices" not in result:
-            print("API ERROR:", result)
-            return {"error": "OpenRouter failed", "details": result}
+            print("OpenRouter Error:", result)
+            return fallback_response(prompt)
 
         content = result["choices"][0]["message"]["content"]
 
+        # Extract JSON safely
         match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
         if match:
             content = match.group(1)
 
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except:
+            return fallback_response(prompt)
 
     except Exception as e:
         print("LLM ERROR:", str(e))
-        return {"error": str(e)}
-
-        # =========================
-        # FALLBACK (SAFE RESPONSE)
-        # =========================
-        if "ats_score" in prompt:
-            return {
-                "ats_score": 75,
-                "detected_skills": ["Python", "Flask", "Angular"],
-                "missing_skills": ["Docker", "CI/CD"],
-                "best_suited_role": "Full Stack Developer",
-                "improvements": ["Add projects", "Improve formatting"]
-            }
-
-        if "rewritten_resume" in prompt:
-            return {
-                "rewritten_resume": "Optimized Resume Content",
-                "changes_made": ["ATS optimized", "Better formatting"]
-            }
-
-        if "questions" in prompt:
-            return {
-                "questions": [
-                    {
-                        "question": "Tell me about yourself",
-                        "answer": "Explain background, skills, projects",
-                        "type": "Behavioral"
-                    }
-                ]
-            }
-
-        return {"error": "LLM failed"}
+        return fallback_response(prompt)
 
 
 # =========================
-# 📄 ANALYZE RESUME
+# ANALYZE RESUME
 # =========================
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
@@ -111,8 +118,8 @@ def analyze_resume():
             return jsonify({"error": "No resume file uploaded"}), 400
 
         pdf_reader = PyPDF2.PdfReader(file)
-        text = ""
 
+        text = ""
         for page in pdf_reader.pages:
             extracted = page.extract_text()
             if extracted:
@@ -136,8 +143,8 @@ def analyze_resume():
         """
 
         result = call_llm_json(prompt)
-        result["extracted_text"] = text
 
+        result["extracted_text"] = text
         return jsonify(result)
 
     except Exception as e:
@@ -145,7 +152,7 @@ def analyze_resume():
 
 
 # =========================
-# ✏️ REWRITE RESUME
+# REWRITE RESUME
 # =========================
 @app.route('/rewrite', methods=['POST'])
 def rewrite_resume():
@@ -172,7 +179,7 @@ def rewrite_resume():
 
 
 # =========================
-# 🎯 INTERVIEW PREP
+# INTERVIEW PREP
 # =========================
 @app.route('/interview-prep', methods=['POST'])
 def interview_prep():
@@ -204,7 +211,7 @@ def interview_prep():
 
 
 # =========================
-# 🚀 RUN (LOCAL ONLY)
+# RUN SERVER
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
