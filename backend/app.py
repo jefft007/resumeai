@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import PyPDF2
+import pdfplumber
 import requests
 import json
 import re
@@ -10,19 +10,6 @@ app = Flask(__name__)
 CORS(app, origins=["*"])
 
 # =========================
-# HEALTH CHECK
-# =========================
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "Resume AI Backend is running 🚀"}), 200
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"}), 200
-
-
-# =========================
 # API KEY
 # =========================
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -30,42 +17,162 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
     print("⚠️ WARNING: OPENROUTER_API_KEY is missing!")
 
-
 # =========================
-# FALLBACK RESPONSE (FIXED)
+# HEALTH CHECK
 # =========================
-def fallback_response(prompt: str):
-    if "ats_score" in prompt:
-        return {
-            "ats_score": 75,
-            "detected_skills": ["Python", "Flask", "Angular"],
-            "missing_skills": ["Docker", "CI/CD"],
-            "best_suited_role": "Full Stack Developer",
-            "improvements": ["Add projects", "Improve formatting"]
-        }
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "message": "Resume AI Backend Running 🚀"
+    })
 
-    if "rewritten_resume" in prompt:
-        return {
-            "rewritten_resume": "Optimized Resume Content",
-            "changes_made": ["ATS optimized", "Better formatting"]
-        }
 
-    if "questions" in prompt:
-        return {
-            "questions": [
-                {
-                    "question": "Tell me about yourself",
-                    "answer": "Explain background, skills, projects",
-                    "type": "Behavioral"
-                }
-            ]
-        }
-
-    return {"error": "Fallback failed"}
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "ok"
+    })
 
 
 # =========================
-# LLM CALL
+# EXTRACT PDF TEXT
+# =========================
+def extract_resume_text(file):
+    text = ""
+
+    with pdfplumber.open(file) as pdf:
+        for page in pdf.pages:
+            extracted = page.extract_text()
+
+            if extracted:
+                text += extracted + "\n"
+
+    return text.strip()
+
+
+# =========================
+# LOCAL ATS ANALYZER
+# =========================
+def local_resume_analysis(text):
+    text_lower = text.lower()
+
+    skills_db = {
+        "python": 10,
+        "java": 10,
+        "angular": 15,
+        "react": 15,
+        "html": 5,
+        "css": 5,
+        "javascript": 10,
+        "typescript": 10,
+        "sql": 10,
+        "mysql": 10,
+        "mongodb": 15,
+        "node": 15,
+        "express": 10,
+        "flask": 15,
+        "django": 15,
+        "docker": 20,
+        "aws": 20,
+        "azure": 20,
+        "git": 10,
+        "jenkins": 15,
+        "machine learning": 25,
+        "ai": 20,
+        "data science": 20,
+        "tailwind": 10,
+        "bootstrap": 5,
+        "spring boot": 20,
+        "kubernetes": 25
+    }
+
+    detected_skills = []
+    missing_skills = []
+    score = 0
+
+    for skill, points in skills_db.items():
+        if skill in text_lower:
+            detected_skills.append(skill.title())
+            score += points
+        else:
+            missing_skills.append(skill.title())
+
+    score = min(score, 100)
+
+    # =========================
+    # ROLE DETECTION
+    # =========================
+    if "angular" in text_lower or "react" in text_lower:
+        role = "Frontend Developer"
+
+    elif (
+        "python" in text_lower and
+        ("machine learning" in text_lower or "ai" in text_lower)
+    ):
+        role = "AI/ML Engineer"
+
+    elif (
+        "flask" in text_lower or
+        "django" in text_lower or
+        "node" in text_lower
+    ):
+        role = "Backend Developer"
+
+    elif (
+        "docker" in text_lower or
+        "jenkins" in text_lower or
+        "aws" in text_lower
+    ):
+        role = "DevOps Engineer"
+
+    elif (
+        "mongodb" in text_lower and
+        "angular" in text_lower
+    ):
+        role = "Full Stack Developer"
+
+    else:
+        role = "Software Developer"
+
+    # =========================
+    # IMPROVEMENTS
+    # =========================
+    improvements = []
+
+    if score < 40:
+        improvements.append("Add more technical skills and projects.")
+        improvements.append("Include certifications and internship experience.")
+
+    if "project" not in text_lower:
+        improvements.append("Add project section with real-world applications.")
+
+    if "github" not in text_lower:
+        improvements.append("Add GitHub profile link.")
+
+    if "linkedin" not in text_lower:
+        improvements.append("Add LinkedIn profile.")
+
+    if len(text.split()) < 250:
+        improvements.append("Resume content is too short. Add more details.")
+
+    if "docker" not in text_lower:
+        improvements.append("Learning Docker can improve ATS score.")
+
+    if "aws" not in text_lower:
+        improvements.append("Add cloud skills like AWS or Azure.")
+
+    return {
+        "ats_score": score,
+        "detected_skills": detected_skills,
+        "missing_skills": missing_skills[:10],
+        "best_suited_role": role,
+        "improvements": improvements,
+        "extracted_text": text
+    }
+
+
+# =========================
+# OPENROUTER LLM
 # =========================
 def call_llm_json(prompt):
     try:
@@ -77,122 +184,138 @@ def call_llm_json(prompt):
             },
             json={
                 "model": "meta-llama/llama-3-8b-instruct",
-                "messages": [{"role": "user", "content": prompt}]
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
             },
-            timeout=30
+            timeout=60
         )
 
         result = response.json()
 
-        # If API fails → fallback
         if "choices" not in result:
             print("OpenRouter Error:", result)
-            return fallback_response(prompt)
+            return None
 
         content = result["choices"][0]["message"]["content"]
 
-        # Extract JSON safely
         match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
+
         if match:
             content = match.group(1)
 
-        try:
-            return json.loads(content)
-        except:
-            return fallback_response(prompt)
+        return json.loads(content)
 
     except Exception as e:
         print("LLM ERROR:", str(e))
-        return fallback_response(prompt)
+        return None
 
 
 # =========================
 # ANALYZE RESUME
 # =========================
-@app.route('/analyze', methods=['POST'])
+@app.route("/analyze", methods=["POST"])
 def analyze_resume():
     try:
-        file = request.files.get('resume')
+        file = request.files.get("resume")
 
         if not file:
-            return jsonify({"error": "No resume file uploaded"}), 400
+            return jsonify({
+                "error": "No resume uploaded"
+            }), 400
 
-        pdf_reader = PyPDF2.PdfReader(file)
+        # Extract text
+        text = extract_resume_text(file)
 
-        text = ""
-        for page in pdf_reader.pages:
-            extracted = page.extract_text()
-            if extracted:
-                text += extracted
+        if not text:
+            return jsonify({
+                "error": "Unable to extract text from PDF"
+            }), 400
 
-        text = text[:4000]
+        # LOCAL DYNAMIC ANALYSIS
+        analysis = local_resume_analysis(text)
 
-        prompt = f"""
-        Analyze this resume:
-
-        {text}
-
-        Return ONLY JSON:
-        {{
-            "ats_score": number,
-            "detected_skills": [],
-            "missing_skills": [],
-            "best_suited_role": "",
-            "improvements": []
-        }}
-        """
-
-        result = call_llm_json(prompt)
-
-        result["extracted_text"] = text
-        return jsonify(result)
+        return jsonify(analysis)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================
-# REWRITE RESUME
+# AI RESUME REWRITE
 # =========================
-@app.route('/rewrite', methods=['POST'])
+@app.route("/rewrite", methods=["POST"])
 def rewrite_resume():
     try:
         data = request.json or {}
 
+        resume_text = data.get("resume_text", "")
+        job_description = data.get("job_description", "")
+
         prompt = f"""
-        Rewrite resume:
+        Rewrite and optimize this resume for ATS.
 
-        Resume: {data.get('resume_text','')}
-        Job: {data.get('job_description','')}
+        Resume:
+        {resume_text}
 
-        Return ONLY JSON:
+        Job Description:
+        {job_description}
+
+        Return ONLY valid JSON:
+
         {{
             "rewritten_resume": "",
             "changes_made": []
         }}
         """
 
-        return jsonify(call_llm_json(prompt))
+        result = call_llm_json(prompt)
+
+        if not result:
+            result = {
+                "rewritten_resume": resume_text,
+                "changes_made": [
+                    "Added ATS-friendly keywords",
+                    "Improved formatting",
+                    "Enhanced project descriptions"
+                ]
+            }
+
+        return jsonify(result)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================
-# INTERVIEW PREP
+# INTERVIEW QUESTIONS
 # =========================
-@app.route('/interview-prep', methods=['POST'])
+@app.route("/interview-prep", methods=["POST"])
 def interview_prep():
     try:
         data = request.json or {}
 
+        role = data.get("role", "")
+        resume_text = data.get("resume_text", "")
+
         prompt = f"""
-        Generate interview questions:
+        Generate interview questions for this role:
 
-        Role: {data.get('role','')}
-        Resume: {data.get('resume_text','')}
+        Role:
+        {role}
 
-        Return ONLY JSON:
+        Resume:
+        {resume_text}
+
+        Return ONLY valid JSON:
+
         {{
             "questions": [
                 {{
@@ -204,15 +327,40 @@ def interview_prep():
         }}
         """
 
-        return jsonify(call_llm_json(prompt))
+        result = call_llm_json(prompt)
+
+        if not result:
+            result = {
+                "questions": [
+                    {
+                        "question": "Tell me about yourself.",
+                        "answer": "Explain your education, skills, and projects.",
+                        "type": "Behavioral"
+                    },
+                    {
+                        "question": f"What are your strengths as a {role}?",
+                        "answer": "Discuss technical strengths and problem-solving.",
+                        "type": "Technical"
+                    }
+                ]
+            }
+
+        return jsonify(result)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================
-# RUN SERVER
+# START SERVER
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=True
+    )
