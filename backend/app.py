@@ -12,15 +12,23 @@ CORS(app, origins=["*"])
 # =========================
 # HEALTH CHECK
 # =========================
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Resume AI Backend is running 🚀"}), 200
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
 
 # =========================
-# 🔐 API KEY (FIXED)
+# 🔐 API KEY (IMPORTANT FIX)
 # =========================
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
+if not OPENROUTER_API_KEY:
+    print("⚠️ WARNING: OPENROUTER_API_KEY is missing in environment variables")
 
 
 # =========================
@@ -29,7 +37,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 def call_llm_json(prompt):
     try:
         response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
+            "https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json"
@@ -45,31 +53,37 @@ def call_llm_json(prompt):
 
         result = response.json()
 
-        content = result['choices'][0]['message']['content'].strip()
+        # safety check
+        if "choices" not in result:
+            raise Exception(result)
 
-        json_match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
-        if json_match:
-            content = json_match.group(1)
+        content = result["choices"][0]["message"]["content"]
+
+        match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
+        if match:
+            content = match.group(1)
 
         return json.loads(content)
 
     except Exception as e:
         print("LLM Error:", e)
 
-        # fallback
+        # =========================
+        # FALLBACK (SAFE RESPONSE)
+        # =========================
         if "ats_score" in prompt:
             return {
                 "ats_score": 75,
                 "detected_skills": ["Python", "Flask", "Angular"],
                 "missing_skills": ["Docker", "CI/CD"],
                 "best_suited_role": "Full Stack Developer",
-                "improvements": ["Add projects", "Add DevOps skills"]
+                "improvements": ["Add projects", "Improve formatting"]
             }
 
         if "rewritten_resume" in prompt:
             return {
-                "rewritten_resume": "Optimized Resume Content Here",
-                "changes_made": ["Improved formatting", "ATS optimized"]
+                "rewritten_resume": "Optimized Resume Content",
+                "changes_made": ["ATS optimized", "Better formatting"]
             }
 
         if "questions" in prompt:
@@ -77,13 +91,13 @@ def call_llm_json(prompt):
                 "questions": [
                     {
                         "question": "Tell me about yourself",
-                        "answer": "Start with background, skills, and projects.",
+                        "answer": "Explain background, skills, projects",
                         "type": "Behavioral"
                     }
                 ]
             }
 
-        return {}
+        return {"error": "LLM failed"}
 
 
 # =========================
@@ -92,7 +106,10 @@ def call_llm_json(prompt):
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
     try:
-        file = request.files['resume']
+        file = request.files.get('resume')
+
+        if not file:
+            return jsonify({"error": "No resume file uploaded"}), 400
 
         pdf_reader = PyPDF2.PdfReader(file)
         text = ""
@@ -105,9 +122,8 @@ def analyze_resume():
         text = text[:4000]
 
         prompt = f"""
-        Analyze this resume.
+        Analyze this resume:
 
-        Resume:
         {text}
 
         Return ONLY JSON:
@@ -135,16 +151,13 @@ def analyze_resume():
 @app.route('/rewrite', methods=['POST'])
 def rewrite_resume():
     try:
-        data = request.json
+        data = request.json or {}
 
         prompt = f"""
-        Rewrite resume for job.
+        Rewrite resume:
 
-        Resume:
-        {data.get('resume_text','')}
-
-        Job:
-        {data.get('job_description','')}
+        Resume: {data.get('resume_text','')}
+        Job: {data.get('job_description','')}
 
         Return ONLY JSON:
         {{
@@ -165,10 +178,10 @@ def rewrite_resume():
 @app.route('/interview-prep', methods=['POST'])
 def interview_prep():
     try:
-        data = request.json
+        data = request.json or {}
 
         prompt = f"""
-        Generate interview questions.
+        Generate interview questions:
 
         Role: {data.get('role','')}
         Resume: {data.get('resume_text','')}
@@ -192,9 +205,8 @@ def interview_prep():
 
 
 # =========================
-# 🚀 RUN SERVER
+# 🚀 RUN (LOCAL ONLY)
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-    print("🔥 Flask app started successfully")
