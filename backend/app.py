@@ -5,17 +5,28 @@ import requests
 import json
 import re
 import os
+from dotenv import load_dotenv
+
+# =========================
+# INIT
+# =========================
+load_dotenv()
 
 app = Flask(__name__)
-
-# ✅ FIXED CORS for production (Netlify frontend)
 CORS(app, origins=["*"])
+
+# =========================
+# HEALTH CHECK
+# =========================
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
-# 🔐 API KEY from Render environment variables
-OPENROUTER_API_KEY = os.environ.get("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", "")
+
+# =========================
+# 🔐 API KEY (FIXED)
+# =========================
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 
 # =========================
@@ -35,13 +46,13 @@ def call_llm_json(prompt):
                     {"role": "user", "content": prompt}
                 ]
             },
-            timeout=30  # ✅ important for deployment stability
+            timeout=30
         )
 
         result = response.json()
+
         content = result['choices'][0]['message']['content'].strip()
 
-        # Extract JSON safely
         json_match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
         if json_match:
             content = json_match.group(1)
@@ -49,46 +60,30 @@ def call_llm_json(prompt):
         return json.loads(content)
 
     except Exception as e:
-        print(f"Error calling LLM: {e}")
+        print("LLM Error:", e)
 
-        # =========================
-        # 🔁 FALLBACK RESPONSES
-        # =========================
-
+        # fallback
         if "ats_score" in prompt:
             return {
                 "ats_score": 75,
-                "detected_skills": ["Python", "Web Development", "Software Engineering"],
-                "missing_skills": ["Docker", "CI/CD", "Testing"],
+                "detected_skills": ["Python", "Flask", "Angular"],
+                "missing_skills": ["Docker", "CI/CD"],
                 "best_suited_role": "Full Stack Developer",
-                "improvements": [
-                    "Add measurable achievements",
-                    "Include modern DevOps skills",
-                    "Improve project descriptions"
-                ]
+                "improvements": ["Add projects", "Add DevOps skills"]
             }
 
-        elif "rewritten_resume" in prompt:
+        if "rewritten_resume" in prompt:
             return {
-                "rewritten_resume": "### Professional Summary\nSoftware Engineer with experience in building scalable web applications.\n\n### Skills\nPython, Flask, Angular, APIs\n\n### Achievements\n- Improved system performance by 20%\n- Built REST APIs for web applications",
-                "changes_made": [
-                    "Improved formatting",
-                    "Added achievement-based bullet points",
-                    "Optimized for ATS"
-                ]
+                "rewritten_resume": "Optimized Resume Content Here",
+                "changes_made": ["Improved formatting", "ATS optimized"]
             }
 
-        elif "questions" in prompt:
+        if "questions" in prompt:
             return {
                 "questions": [
                     {
-                        "question": "How do you optimize API performance?",
-                        "answer": "I use caching, indexing, and optimized queries to improve performance.",
-                        "type": "Technical"
-                    },
-                    {
-                        "question": "Describe a team conflict you solved.",
-                        "answer": "I facilitated discussion and aligned both teams on a shared solution.",
+                        "question": "Tell me about yourself",
+                        "answer": "Start with background, skills, and projects.",
                         "type": "Behavioral"
                     }
                 ]
@@ -113,15 +108,15 @@ def analyze_resume():
             if extracted:
                 text += extracted
 
-        text = text[:4000]  # limit tokens
+        text = text[:4000]
 
         prompt = f"""
-        Analyze this resume and provide evaluation.
+        Analyze this resume.
 
         Resume:
         {text}
 
-        Return ONLY valid JSON:
+        Return ONLY JSON:
         {{
             "ats_score": number,
             "detected_skills": [],
@@ -137,7 +132,6 @@ def analyze_resume():
         return jsonify(result)
 
     except Exception as e:
-        print(f"Server error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -148,20 +142,15 @@ def analyze_resume():
 def rewrite_resume():
     try:
         data = request.json
-        resume_text = data.get('resume_text', '')
-        job_description = data.get('job_description', '')
-
-        if not resume_text or not job_description:
-            return jsonify({"error": "Missing data"}), 400
 
         prompt = f"""
-        Rewrite this resume for the job description.
+        Rewrite resume for job.
 
         Resume:
-        {resume_text}
+        {data.get('resume_text','')}
 
-        Job Description:
-        {job_description}
+        Job:
+        {data.get('job_description','')}
 
         Return ONLY JSON:
         {{
@@ -170,11 +159,9 @@ def rewrite_resume():
         }}
         """
 
-        result = call_llm_json(prompt)
-        return jsonify(result)
+        return jsonify(call_llm_json(prompt))
 
     except Exception as e:
-        print(f"Server error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -185,19 +172,12 @@ def rewrite_resume():
 def interview_prep():
     try:
         data = request.json
-        resume_text = data.get('resume_text', '')
-        role = data.get('role', '')
-
-        if not resume_text:
-            return jsonify({"error": "Missing resume_text"}), 400
 
         prompt = f"""
-        Generate 5 interview questions + answers.
+        Generate interview questions.
 
-        Role: {role}
-
-        Resume:
-        {resume_text}
+        Role: {data.get('role','')}
+        Resume: {data.get('resume_text','')}
 
         Return ONLY JSON:
         {{
@@ -205,22 +185,20 @@ def interview_prep():
                 {{
                     "question": "",
                     "answer": "",
-                    "type": "Technical or Behavioral"
+                    "type": ""
                 }}
             ]
         }}
         """
 
-        result = call_llm_json(prompt)
-        return jsonify(result)
+        return jsonify(call_llm_json(prompt))
 
     except Exception as e:
-        print(f"Server error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 # =========================
-# 🚀 START SERVER (IMPORTANT FIX)
+# 🚀 RUN SERVER
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
