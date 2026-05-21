@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject, of, throwError } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { tap, catchError } from 'rxjs/operators';
 
 export interface User {
   username: string;
@@ -23,111 +23,116 @@ export interface Job {
   providedIn: 'root'
 })
 export class ResumeService {
-  private baseUrl = 'http://127.0.0.1:5000';
 
-  // State variables
+  // ✅ BASE URL (Render backend)
+  private baseUrl = 'https://resumeai-p1zf.onrender.com';
+
+  // =====================
+  // STATE MANAGEMENT
+  // =====================
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   public currentUser$ = this.currentUserSubject.asObservable();
 
   private analysisResultSubject = new BehaviorSubject<any | null>(null);
   public analysisResult$ = this.analysisResultSubject.asObservable();
 
-  // Available mock jobs
-  private mockJobs: Job[] = [
-    {
-      id: 'job1',
-      title: 'Frontend Developer',
-      company: 'TechVibe Corp',
-      logo: '💻',
-      location: 'San Francisco, CA (Remote)',
-      salary: '$110,000 - $140,000',
-      skills: ['Angular', 'TypeScript', 'Tailwind CSS', 'CSS', 'JavaScript', 'Git'],
-      description: 'We are looking for a Frontend Engineer to build high-performance Single Page Applications (SPAs) using Angular and custom styling.'
-    },
-    {
-      id: 'job2',
-      title: 'Backend Software Engineer',
-      company: 'DataFlow Inc',
-      logo: '⚙️',
-      location: 'New York, NY (Hybrid)',
-      salary: '$120,000 - $155,000',
-      skills: ['Python', 'Flask', 'SQL', 'Docker', 'REST APIs', 'Git', 'CI/CD Pipelines'],
-      description: 'Join our team to develop scalable backend services using Python, Flask, and cloud-native database pipelines.'
-    },
-    {
-      id: 'job3',
-      title: 'Full Stack Engineer',
-      company: 'SaaSify',
-      logo: '🚀',
-      location: 'Austin, TX (Remote)',
-      salary: '$130,000 - $160,000',
-      skills: ['Angular', 'TypeScript', 'Python', 'Flask', 'SQL', 'Tailwind CSS', 'Git', 'Unit Testing'],
-      description: 'Looking for a generalist engineer with deep expertise in Angular frontend frameworks and Flask python endpoints.'
-    },
-    {
-      id: 'job4',
-      title: 'DevOps & Infrastructure Engineer',
-      company: 'CloudPulse',
-      logo: '☁️',
-      location: 'Seattle, WA',
-      salary: '$140,000 - $180,000',
-      skills: ['Docker', 'CI/CD Pipelines', 'Kubernetes', 'Linux', 'AWS', 'Python', 'Shell Scripting'],
-      description: 'Automate build runs and scale cluster architectures. Require solid python skills and deep DevOps toolchain knowledge.'
-    },
-    {
-      id: 'job5',
-      title: 'Data Scientist & ML Developer',
-      company: 'NeuroAI',
-      logo: '🧠',
-      location: 'Boston, MA (Remote)',
-      salary: '$135,000 - $170,000',
-      skills: ['Python', 'Machine Learning', 'Data Science', 'SQL', 'Pandas', 'TensorFlow'],
-      description: 'Train models and build predictive text evaluation pipelines. Python knowledge and statistical modeling required.'
-    }
-  ];
-
   constructor(private http: HttpClient) {
-    // Load user from localStorage on init
-    const storedUser = localStorage.getItem('resume_user');
-    if (storedUser) {
-      try {
+    this.loadUserFromStorage();
+  }
+
+  // =====================
+  // INIT USER
+  // =====================
+  private loadUserFromStorage(): void {
+    try {
+      const storedUser = localStorage.getItem('resume_user');
+      if (storedUser) {
         this.currentUserSubject.next(JSON.parse(storedUser));
-      } catch (e) {
-        localStorage.removeItem('resume_user');
       }
+    } catch (err) {
+      localStorage.removeItem('resume_user');
     }
   }
 
-  // Set the analysis result manually (e.g. from history click)
-  setAnalysisResult(result: any): void {
-    this.analysisResultSubject.next(result);
+  // =====================
+  // 🔥 ANALYZE RESUME API
+  // =====================
+  analyzeResume(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    return this.http.post<any>(`${this.baseUrl}/analyze`, formData).pipe(
+      tap(result => {
+        this.analysisResultSubject.next(result);
+
+        const user = this.currentUserSubject.value;
+        if (user) {
+          this.saveToHistory(file.name, result);
+        }
+      }),
+      catchError(err => {
+        console.error('Analyze API error:', err);
+        return throwError(() => new Error('Failed to analyze resume'));
+      })
+    );
   }
 
-  getCurrentUser(): User | null {
-    return this.currentUserSubject.value;
+  // =====================
+  // ✏️ REWRITE RESUME API
+  // =====================
+  rewriteResume(resumeText: string, jobDescription: string): Observable<any> {
+    return this.http.post<any>(`${this.baseUrl}/rewrite`, {
+      resume_text: resumeText,
+      job_description: jobDescription
+    }).pipe(
+      catchError(err => {
+        console.error('Rewrite API error:', err);
+        return throwError(() => new Error('Failed to rewrite resume'));
+      })
+    );
   }
 
-  // --- Auth Logic ---
+  // =====================
+  // 🎯 INTERVIEW PREP API
+  // =====================
+  interviewPrep(resumeText: string, role: string): Observable<any> {
+    return this.http.post<any>(`${this.baseUrl}/interview-prep`, {
+      resume_text: resumeText,
+      role
+    }).pipe(
+      catchError(err => {
+        console.error('Interview API error:', err);
+        return throwError(() => new Error('Failed to generate interview questions'));
+      })
+    );
+  }
+
+  // =====================
+  // 👤 AUTH SYSTEM
+  // =====================
   login(username: string): Observable<User> {
-    const users = JSON.parse(localStorage.getItem('registered_users') || '[]');
-    const foundUser = users.find((u: any) => u.username.trim().toLowerCase() === username.trim().toLowerCase());
+    const users = this.getUsers();
 
-    if (!foundUser) {
+    const found = users.find(
+      (u: any) => u.username.trim().toLowerCase() === username.trim().toLowerCase()
+    );
+
+    if (!found) {
       return throwError(() => new Error('User not found. Please sign up first.'));
     }
 
-    localStorage.setItem('resume_user', JSON.stringify(foundUser));
-    this.currentUserSubject.next(foundUser);
-    return of(foundUser);
+    this.setUser(found);
+    return of(found);
   }
 
   signup(username: string, name: string): Observable<User> {
-    // Basic local registration logic - save user profile
-    const users = JSON.parse(localStorage.getItem('registered_users') || '[]');
+    const users = this.getUsers();
+
     if (!users.find((u: any) => u.username === username)) {
       users.push({ username, name });
       localStorage.setItem('registered_users', JSON.stringify(users));
     }
+
     return this.login(username);
   }
 
@@ -137,110 +142,124 @@ export class ResumeService {
     this.analysisResultSubject.next(null);
   }
 
-  // --- History Logic ---
+  setAnalysisResult(result: any): void {
+    this.analysisResultSubject.next(result);
+  }
+
+  getCurrentUser(): User | null {
+    return this.currentUserSubject.value;
+  }
+
+  private setUser(user: User): void {
+    localStorage.setItem('resume_user', JSON.stringify(user));
+    this.currentUserSubject.next(user);
+  }
+
+  private getUsers(): any[] {
+    return JSON.parse(localStorage.getItem('registered_users') || '[]');
+  }
+
+  // =====================
+  // 📜 HISTORY SYSTEM
+  // =====================
   saveToHistory(filename: string, analysis: any): void {
     const user = this.currentUserSubject.value;
     if (!user) return;
 
-    const historyKey = `history_${user.username}`;
-    const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
+    const key = `history_${user.username}`;
+    const history = JSON.parse(localStorage.getItem(key) || '[]');
 
-    // Prevent saving exact duplicates consecutively
-    if (history.length > 0 && history[0].analysis.extracted_text === analysis.extracted_text) {
+    // prevent duplicate consecutive saves
+    if (
+      history.length > 0 &&
+      history[0]?.analysis?.extracted_text === analysis?.extracted_text
+    ) {
       return;
     }
 
-    // Add new entry to start of array
     history.unshift({
-      id: new Date().getTime().toString(),
+      id: Date.now().toString(),
       filename,
-      date: new Date().toLocaleDateString(),
+      date: new Date().toLocaleString(),
       analysis
     });
 
-    // Limit history to 10 items
+    // keep only latest 10
     if (history.length > 10) history.pop();
 
-    localStorage.setItem(historyKey, JSON.stringify(history));
+    localStorage.setItem(key, JSON.stringify(history));
   }
 
   getHistory(): any[] {
     const user = this.currentUserSubject.value;
     if (!user) return [];
 
-    const historyKey = `history_${user.username}`;
-    return JSON.parse(localStorage.getItem(historyKey) || '[]');
+    const key = `history_${user.username}`;
+    return JSON.parse(localStorage.getItem(key) || '[]');
   }
 
   deleteHistoryItem(id: string): void {
     const user = this.currentUserSubject.value;
     if (!user) return;
 
-    const historyKey = `history_${user.username}`;
-    let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-    history = history.filter((item: any) => item.id !== id);
-    localStorage.setItem(historyKey, JSON.stringify(history));
+    const key = `history_${user.username}`;
+    let history = JSON.parse(localStorage.getItem(key) || '[]');
+
+    history = history.filter((h: any) => h.id !== id);
+
+    localStorage.setItem(key, JSON.stringify(history));
   }
 
-  // --- API Calls ---
-  analyzeResume(file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('resume', file);
-
-    return this.http.post<any>(`${this.baseUrl}/analyze`, formData).pipe(
-      tap(result => {
-        this.analysisResultSubject.next(result);
-        if (this.currentUserSubject.value) {
-          this.saveToHistory(file.name, result);
-        }
-      })
-    );
-  }
-
-  rewriteResume(resumeText: string, jobDescription: string): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/rewrite`, {
-      resume_text: resumeText,
-      job_description: jobDescription
-    });
-  }
-
-  interviewPrep(resumeText: string, role: string): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/interview-prep`, {
-      resume_text: resumeText,
-      role: role
-    });
-  }
-
-  // --- Job Match Recommendation Engine ---
+  // =====================
+  // 💼 JOB MATCH ENGINE
+  // =====================
   getRecommendedJobs(userSkills: string[]): any[] {
     if (!userSkills || userSkills.length === 0) return [];
 
-    const lowerUserSkills = userSkills.map(s => s.trim().toLowerCase());
+    const skills = userSkills.map(s => s.toLowerCase());
 
-    return this.mockJobs.map(job => {
-      const matched: string[] = [];
-      const missing: string[] = [];
+    const jobs: Job[] = [
+      {
+        id: '1',
+        title: 'Frontend Developer',
+        company: 'TechVibe',
+        logo: '💻',
+        location: 'Remote',
+        salary: '₹8-15 LPA',
+        skills: ['Angular', 'TypeScript', 'CSS', 'JavaScript'],
+        description: 'Build modern UI applications using Angular.'
+      },
+      {
+        id: '2',
+        title: 'Backend Developer',
+        company: 'DataFlow',
+        logo: '⚙️',
+        location: 'Hybrid',
+        salary: '₹10-18 LPA',
+        skills: ['Python', 'Flask', 'API', 'SQL'],
+        description: 'Develop scalable backend systems and APIs.'
+      }
+    ];
 
-      job.skills.forEach(skill => {
-        const lowerSkill = skill.toLowerCase();
-        // Check if any of user's skills matched this job skill
-        const isMatched = lowerUserSkills.some(us => us.includes(lowerSkill) || lowerSkill.includes(us));
-        if (isMatched) {
-          matched.push(skill);
-        } else {
-          missing.push(skill);
-        }
-      });
+    return jobs
+      .map(job => {
+        const matched = job.skills.filter(s =>
+          skills.some(us => us.includes(s.toLowerCase()))
+        );
 
-      // Calculate matching percentage
-      const matchScore = Math.round((matched.length / job.skills.length) * 100);
+        const missing = job.skills.filter(s => !matched.includes(s));
 
-      return {
-        ...job,
-        matchScore,
-        matchedSkills: matched,
-        missingSkills: missing
-      };
-    }).sort((a, b) => b.matchScore - a.matchScore);
+        const matchScore = Math.round(
+          (matched.length / job.skills.length) * 100
+        );
+
+        return {
+          ...job,
+          matchedSkills: matched,
+          missingSkills: missing,
+          matchScore
+        };
+      })
+      .sort((a, b) => b.matchScore - a.matchScore);
   }
 }

@@ -7,38 +7,31 @@ import { ResumeService, User } from '../resume.service';
   styleUrls: ['./resume-upload.component.css']
 })
 export class ResumeUploadComponent implements OnInit {
-  // Tabs: 'dashboard' | 'rewrite' | 'jobs' | 'interview' | 'history'
+
   activeTab: string = 'dashboard';
 
-  // Selected resume file
   selectedFile: File | null = null;
   isLoading = false;
   analysisResult: any = null;
 
-  // Dark Mode
   isDarkMode = false;
 
-  // Authentication State
   showAuthModal = false;
   authMode: 'login' | 'signup' = 'login';
   authUsername = '';
   authName = '';
   currentUser: User | null = null;
 
-  // History list
   historyList: any[] = [];
 
-  // Resume Rewrite inputs/outputs
   jobDescription: string = '';
   rewriting = false;
   rewriteResult: any = null;
 
-  // Interview prep inputs/outputs
   interviewPrepList: any[] = [];
   loadingInterview = false;
   activeInterviewQuestion: number | null = null;
 
-  // Dynamic user skills (initialized from analysis, customizable)
   userSkills: string[] = [];
   newSkillInput = '';
   recommendedJobs: any[] = [];
@@ -46,25 +39,23 @@ export class ResumeUploadComponent implements OnInit {
   constructor(private resumeService: ResumeService) {}
 
   ngOnInit(): void {
-    // Check local storage for dark mode
+
+    // Theme
     this.isDarkMode = localStorage.getItem('theme') === 'dark';
     this.applyTheme();
 
-    // Subscribe to current user
+    // User
     this.resumeService.currentUser$.subscribe(user => {
       this.currentUser = user;
-      if (user) {
-        this.loadHistory();
-      } else {
-        this.historyList = [];
-      }
+      this.historyList = user ? this.resumeService.getHistory() : [];
     });
 
-    // Subscribe to analysis result
+    // Analysis result
     this.resumeService.analysisResult$.subscribe(result => {
       this.analysisResult = result;
+
       if (result) {
-        this.userSkills = [...result.detected_skills];
+        this.userSkills = result?.detected_skills ? [...result.detected_skills] : [];
         this.updateJobRecommendations();
         this.rewriteResult = null;
         this.interviewPrepList = [];
@@ -75,38 +66,42 @@ export class ResumeUploadComponent implements OnInit {
     });
   }
 
-  // File selection
+  // ================= FILE =================
   onFileSelected(event: any): void {
-    const file = event.target.files[0];
-    if (file && file.type === 'application/pdf') {
-      this.selectedFile = file;
-    } else {
-      alert('Please upload a valid PDF file');
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      alert('Only PDF allowed');
+      return;
     }
+
+    this.selectedFile = file;
   }
 
-  // Upload and analyze
   uploadResume(): void {
     if (!this.selectedFile) {
-      alert('Please select a resume PDF');
+      alert('Select a PDF first');
       return;
     }
 
     this.isLoading = true;
+
     this.resumeService.analyzeResume(this.selectedFile).subscribe({
       next: () => {
         this.isLoading = false;
-        this.loadHistory();
+        this.historyList = this.resumeService.getHistory();
       },
       error: (err) => {
         console.error(err);
-        alert('Error analyzing resume. Please make sure the backend is running.');
+        alert('Backend error / API not reachable');
         this.isLoading = false;
       }
     });
   }
 
-  // Dark Mode toggle
+  // ================= THEME =================
   toggleDarkMode(): void {
     this.isDarkMode = !this.isDarkMode;
     localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
@@ -114,49 +109,40 @@ export class ResumeUploadComponent implements OnInit {
   }
 
   applyTheme(): void {
-    if (this.isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', this.isDarkMode);
   }
 
-  // --- Auth Controls ---
-  openAuth(mode: 'login' | 'signup'): void {
+  // ================= AUTH =================
+  openAuth(mode: 'login' | 'signup') {
     this.authMode = mode;
     this.authUsername = '';
     this.authName = '';
     this.showAuthModal = true;
   }
 
-  closeAuth(): void {
+  closeAuth() {
     this.showAuthModal = false;
   }
 
   handleAuthSubmit(): void {
-    if (!this.authUsername) {
-      alert('Please enter a username');
+    if (!this.authUsername.trim()) {
+      alert('Enter username');
       return;
     }
 
     if (this.authMode === 'login') {
       this.resumeService.login(this.authUsername).subscribe({
-        next: () => {
-          this.closeAuth();
-        },
-        error: (err) => {
-          alert(err.message || 'Login failed');
-        }
+        next: () => this.closeAuth(),
+        error: (e) => alert(e.message)
       });
     } else {
-      if (!this.authName) {
-        alert('Please enter your name');
+      if (!this.authName.trim()) {
+        alert('Enter name');
         return;
       }
+
       this.resumeService.signup(this.authUsername, this.authName).subscribe({
-        next: () => {
-          this.closeAuth();
-        }
+        next: () => this.closeAuth()
       });
     }
   }
@@ -164,10 +150,11 @@ export class ResumeUploadComponent implements OnInit {
   logout(): void {
     this.resumeService.logout();
     this.selectedFile = null;
+    this.analysisResult = null;
     this.activeTab = 'dashboard';
   }
 
-  // --- History Controls ---
+  // ================= HISTORY =================
   loadHistory(): void {
     this.historyList = this.resumeService.getHistory();
   }
@@ -183,14 +170,17 @@ export class ResumeUploadComponent implements OnInit {
     this.loadHistory();
   }
 
-  // --- Skills management ---
+  // ================= SKILLS =================
   addSkill(): void {
-    const val = this.newSkillInput.trim();
-    if (val && !this.userSkills.some(s => s.toLowerCase() === val.toLowerCase())) {
-      this.userSkills.push(val);
-      this.newSkillInput = '';
+    const skill = this.newSkillInput.trim();
+    if (!skill) return;
+
+    if (!this.userSkills.includes(skill)) {
+      this.userSkills.push(skill);
       this.updateJobRecommendations();
     }
+
+    this.newSkillInput = '';
   }
 
   removeSkill(skill: string): void {
@@ -202,9 +192,9 @@ export class ResumeUploadComponent implements OnInit {
     this.recommendedJobs = this.resumeService.getRecommendedJobs(this.userSkills);
   }
 
-  // --- AI Actions ---
+  // ================= AI FEATURES =================
   getInterviewQuestions(): void {
-    if (!this.analysisResult) return;
+    if (!this.analysisResult?.extracted_text) return;
 
     this.loadingInterview = true;
     this.interviewPrepList = [];
@@ -212,27 +202,27 @@ export class ResumeUploadComponent implements OnInit {
 
     this.resumeService.interviewPrep(
       this.analysisResult.extracted_text,
-      this.analysisResult.best_suited_role
+      this.analysisResult.best_suited_role || ''
     ).subscribe({
       next: (res) => {
-        this.interviewPrepList = res.questions || [];
+        this.interviewPrepList = res?.questions || [];
         this.loadingInterview = false;
       },
-      error: (err) => {
-        console.error(err);
-        alert('Failed to generate interview questions');
+      error: () => {
+        alert('Interview API failed');
         this.loadingInterview = false;
       }
     });
   }
 
   toggleInterviewQuestion(index: number): void {
-    this.activeInterviewQuestion = this.activeInterviewQuestion === index ? null : index;
+    this.activeInterviewQuestion =
+      this.activeInterviewQuestion === index ? null : index;
   }
 
   getRewrite(): void {
-    if (!this.analysisResult || !this.jobDescription.trim()) {
-      alert('Please fill out the target job description first.');
+    if (!this.analysisResult?.extracted_text || !this.jobDescription.trim()) {
+      alert('Fill job description');
       return;
     }
 
@@ -247,15 +237,14 @@ export class ResumeUploadComponent implements OnInit {
         this.rewriteResult = res;
         this.rewriting = false;
       },
-      error: (err) => {
-        console.error(err);
-        alert('Failed to rewrite resume');
+      error: () => {
+        alert('Rewrite failed');
         this.rewriting = false;
       }
     });
   }
 
-  // --- Print/PDF Downloader ---
+  // ================= PDF =================
   downloadPDF(): void {
     window.print();
   }

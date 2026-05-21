@@ -7,12 +7,20 @@ import re
 import os
 
 app = Flask(__name__)
-CORS(app)
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+# ✅ FIXED CORS for production (Netlify frontend)
+CORS(app, origins=["*"])
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+# 🔐 API KEY from Render environment variables
+OPENROUTER_API_KEY = os.environ.get("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", "")
 
 
-
+# =========================
+# 🔥 LLM CALL FUNCTION
+# =========================
 def call_llm_json(prompt):
     try:
         response = requests.post(
@@ -24,117 +32,118 @@ def call_llm_json(prompt):
             json={
                 "model": "meta-llama/llama-3-8b-instruct",
                 "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+                    {"role": "user", "content": prompt}
                 ]
-            }
+            },
+            timeout=30  # ✅ important for deployment stability
         )
+
         result = response.json()
         content = result['choices'][0]['message']['content'].strip()
 
-        # Extract JSON string from response
+        # Extract JSON safely
         json_match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
         if json_match:
             content = json_match.group(1)
 
         return json.loads(content)
+
     except Exception as e:
-        print(f"Error calling LLM or parsing JSON: {e}")
-        # Return fallback structure depending on prompt context
+        print(f"Error calling LLM: {e}")
+
+        # =========================
+        # 🔁 FALLBACK RESPONSES
+        # =========================
+
         if "ats_score" in prompt:
             return {
                 "ats_score": 75,
-                "detected_skills": ["Software Engineering", "Web Development", "Python"],
-                "missing_skills": ["Docker", "CI/CD Pipelines", "Unit Testing"],
-                "best_suited_role": "Full Stack Software Engineer",
+                "detected_skills": ["Python", "Web Development", "Software Engineering"],
+                "missing_skills": ["Docker", "CI/CD", "Testing"],
+                "best_suited_role": "Full Stack Developer",
                 "improvements": [
-                    "Quantify accomplishments in project descriptions (e.g., 'improved page speed by 35%').",
-                    "Add missing modern developer keywords like CI/CD and unit testing.",
-                    "Ensure sections are ordered logically: Experience, Skills, Education."
+                    "Add measurable achievements",
+                    "Include modern DevOps skills",
+                    "Improve project descriptions"
                 ]
             }
+
         elif "rewritten_resume" in prompt:
             return {
-                "rewritten_resume": "### Professional Summary\nDedicated and detail-oriented Software Engineer with experience in building responsive web applications. Expert in modern frontend frameworks and backend API design.\n\n### Skills\n* Python, Flask, TypeScript, Angular, Tailwind CSS, Git\n\n### Key Accomplishments\n* **Optimized Application Stack**: Enhanced page performance and styling integration, improving layout speed by 25%.\n* **Modernized Workflows**: Integrated developer tools and structured JSON APIs for seamless communication.",
+                "rewritten_resume": "### Professional Summary\nSoftware Engineer with experience in building scalable web applications.\n\n### Skills\nPython, Flask, Angular, APIs\n\n### Achievements\n- Improved system performance by 20%\n- Built REST APIs for web applications",
                 "changes_made": [
-                    "Enhanced summary to match the job description's focus on responsive web apps.",
-                    "Quantified achievements by adding a 25% performance improvement metric.",
-                    "Reorganized skills section for maximum visual impact."
+                    "Improved formatting",
+                    "Added achievement-based bullet points",
+                    "Optimized for ATS"
                 ]
             }
+
         elif "questions" in prompt:
             return {
                 "questions": [
                     {
-                        "question": "How do you optimize application rendering performance in a modern SPA?",
-                        "answer": "To optimize performance, I use techniques like lazy loading routes, utilizing custom change detection strategies, minimizing DOM manipulations, and profiling the application using browser tools to detect memory leaks.",
+                        "question": "How do you optimize API performance?",
+                        "answer": "I use caching, indexing, and optimized queries to improve performance.",
                         "type": "Technical"
                     },
                     {
-                        "question": "Can you give an example of how you resolved a conflict within your development team?",
-                        "answer": "In a previous project, we had a debate regarding the API schema design. I set up a brief sync where both parties mapped out their trade-offs. We aligned on using a structured JSON API design that accommodated the frontend team's rendering needs and the backend team's db schema.",
+                        "question": "Describe a team conflict you solved.",
+                        "answer": "I facilitated discussion and aligned both teams on a shared solution.",
                         "type": "Behavioral"
-                    },
-                    {
-                        "question": "How do you handle error logging and exception management in Flask APIs?",
-                        "answer": "I set up centralized error handler decorators in Flask, log exceptions with appropriate stack traces, and return clean, user-friendly JSON payloads to the frontend instead of raw tracebacks.",
-                        "type": "Technical"
-                    },
-                    {
-                        "question": "Describe a time you had to learn a new technology quickly. What was your process?",
-                        "answer": "I had to adopt Angular 16 for a new client project. My process was to study the official documentation, build a couple of mock sandbox apps, and consult style guides to ensure standard practices were followed.",
-                        "type": "Behavioral"
-                    },
-                    {
-                        "question": "What is your approach to ensuring data validation on both frontend and backend?",
-                        "answer": "I validate user inputs on the frontend for immediate UI feedback and enforce strict validation on the backend using Python library models or helper schemas to prevent injection and malformed entries.",
-                        "type": "Technical"
                     }
                 ]
             }
+
         return {}
 
 
+# =========================
+# 📄 ANALYZE RESUME
+# =========================
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
     try:
         file = request.files['resume']
+
         pdf_reader = PyPDF2.PdfReader(file)
         text = ""
+
         for page in pdf_reader.pages:
             extracted = page.extract_text()
             if extracted:
                 text += extracted
 
-        text = text[:4000]
+        text = text[:4000]  # limit tokens
 
         prompt = f"""
-        Analyze this resume and provide an evaluation.
+        Analyze this resume and provide evaluation.
+
         Resume:
         {text}
 
-        Provide the output in JSON format with the following keys:
-        - "ats_score": number (0 to 100)
-        - "detected_skills": array of strings
-        - "missing_skills": array of strings
-        - "best_suited_role": string
-        - "improvements": array of strings
-
-        Respond with valid JSON only. Do not include any explanations.
+        Return ONLY valid JSON:
+        {{
+            "ats_score": number,
+            "detected_skills": [],
+            "missing_skills": [],
+            "best_suited_role": "",
+            "improvements": []
+        }}
         """
 
-        res_json = call_llm_json(prompt)
-        res_json['extracted_text'] = text
+        result = call_llm_json(prompt)
+        result["extracted_text"] = text
 
-        return jsonify(res_json)
+        return jsonify(result)
 
     except Exception as e:
         print(f"Server error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
+# =========================
+# ✏️ REWRITE RESUME
+# =========================
 @app.route('/rewrite', methods=['POST'])
 def rewrite_resume():
     try:
@@ -143,35 +152,35 @@ def rewrite_resume():
         job_description = data.get('job_description', '')
 
         if not resume_text or not job_description:
-            return jsonify({"error": "Missing resume_text or job_description"}), 400
+            return jsonify({"error": "Missing data"}), 400
 
         prompt = f"""
-        You are an expert resume writer. Rewrite the following resume text to make it highly optimized for the job description below.
-        Focus on:
-        1. Naturally matching key skills and requirements in the job description.
-        2. Improving bullet points to be achievement-oriented and quantifiable.
+        Rewrite this resume for the job description.
 
-        Resume text:
+        Resume:
         {resume_text}
 
         Job Description:
         {job_description}
 
-        Provide the output in JSON format with two keys:
-        - "rewritten_resume": The fully rewritten resume formatted in clean markdown.
-        - "changes_made": A list of strings detailing specific improvements and keywords added.
-
-        Respond with valid JSON only. Do not include any explanations.
+        Return ONLY JSON:
+        {{
+            "rewritten_resume": "",
+            "changes_made": []
+        }}
         """
 
-        res_json = call_llm_json(prompt)
-        return jsonify(res_json)
+        result = call_llm_json(prompt)
+        return jsonify(result)
 
     except Exception as e:
         print(f"Server error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
+# =========================
+# 🎯 INTERVIEW PREP
+# =========================
 @app.route('/interview-prep', methods=['POST'])
 def interview_prep():
     try:
@@ -183,27 +192,36 @@ def interview_prep():
             return jsonify({"error": "Missing resume_text"}), 400
 
         prompt = f"""
-        Based on the candidate's resume below and their best suited job role ({role}), generate 5 custom interview questions (a mix of technical and behavioral questions).
-        For each question, provide a detailed, high-quality sample answer that highlights the candidate's background.
+        Generate 5 interview questions + answers.
+
+        Role: {role}
 
         Resume:
         {resume_text}
 
-        Provide the output in JSON format as a list of objects under the key "questions". Each object should have keys:
-        - "question": string
-        - "answer": string
-        - "type": string ("Technical" or "Behavioral")
-
-        Respond with valid JSON only. Do not include any explanations.
+        Return ONLY JSON:
+        {{
+            "questions": [
+                {{
+                    "question": "",
+                    "answer": "",
+                    "type": "Technical or Behavioral"
+                }}
+            ]
+        }}
         """
 
-        res_json = call_llm_json(prompt)
-        return jsonify(res_json)
+        result = call_llm_json(prompt)
+        return jsonify(result)
 
     except Exception as e:
         print(f"Server error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
-if __name__ == '__main__':
-    app.run(debug=True)
+# =========================
+# 🚀 START SERVER (IMPORTANT FIX)
+# =========================
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
