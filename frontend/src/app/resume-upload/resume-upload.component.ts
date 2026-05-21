@@ -1,129 +1,183 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject, tap, catchError, of } from 'rxjs';
+import { Component } from '@angular/core';
 
-export interface User {
-  username: string;
-  name: string;
-}
-
-export interface Job {
-  id: string;
-  title: string;
-  company: string;
-  logo: string;
-  location: string;
-  salary: string;
-  skills: string[];
-  description: string;
-}
-
-@Injectable({
-  providedIn: 'root'
+@Component({
+  selector: 'app-resume-upload',
+  templateUrl: './resume-upload.component.html',
+  styleUrls: ['./resume-upload.component.css']
 })
-export class ResumeService {
+export class ResumeUploadComponent {
 
-  // ✅ Backend URL
-  private baseUrl = 'https://resumeai-2ai9.onrender.com';
+  // ===== UI STATE =====
+  isDarkMode: boolean = false;
+  isLoading: boolean = false;
+  activeTab: string = 'dashboard';
 
-  // =====================
-  // STATE MANAGEMENT
-  // =====================
-  private currentUserSubject = new BehaviorSubject<User | null>(null);
-  currentUser$ = this.currentUserSubject.asObservable();
+  // ===== AUTH =====
+  showAuthModal: boolean = false;
+  authMode: 'login' | 'signup' = 'login';
+  authUsername: string = '';
+  authName: string = '';
+  currentUser: any = null;
 
-  private analysisResultSubject = new BehaviorSubject<any | null>(null);
-  analysisResult$ = this.analysisResultSubject.asObservable();
+  // ===== FILE =====
+  selectedFile: File | null = null;
 
-  constructor(private http: HttpClient) {
-    this.loadUserFromStorage();
+  // ===== ANALYSIS =====
+  analysisResult: any = null;
+  historyList: any[] = [];
+
+  // ===== SKILLS =====
+  userSkills: string[] = [];
+  newSkillInput: string = '';
+
+  // ===== REWRITE =====
+  jobDescription: string = '';
+  rewriting: boolean = false;
+  rewriteResult: any = null;
+
+  // ===== JOBS =====
+  recommendedJobs: any[] = [
+    {
+      logo: "💻",
+      title: "Frontend Developer",
+      company: "Tech Corp",
+      location: "Remote",
+      salary: "5–12 LPA",
+      description: "Work with Angular and modern web technologies.",
+      matchScore: 78,
+      matchedSkills: ["Angular"],
+      missingSkills: ["Node.js", "Docker"]
+    }
+  ];
+
+  // ===== INTERVIEW =====
+  interviewPrepList: any[] = [];
+  loadingInterview: boolean = false;
+  activeInterviewQuestion: number | null = null;
+
+  // ================= FILE =================
+  onFileSelected(event: any) {
+    this.selectedFile = event.target.files[0];
   }
 
-  // =====================
-  // LOCAL STORAGE
-  // =====================
-  private loadUserFromStorage(): void {
-    try {
-      const storedUser = localStorage.getItem('resume_user');
+  uploadResume() {
+    if (!this.selectedFile) return;
 
-      if (storedUser) {
-        const user: User = JSON.parse(storedUser);
-        this.currentUserSubject.next(user);
-      }
-    } catch (err) {
-      console.error('Invalid stored user, clearing storage');
-      localStorage.removeItem('resume_user');
+    this.isLoading = true;
+
+    setTimeout(() => {
+      this.analysisResult = {
+        ats_score: 72,
+        best_suited_role: "Software Developer",
+        extracted_text: "Sample extracted resume text...",
+        improvements: ["Add more keywords", "Improve formatting"],
+        missing_skills: ["Docker", "AWS", "System Design"]
+      };
+
+      this.userSkills = ["Angular", "JavaScript"];
+
+      this.isLoading = false;
+    }, 2000);
+  }
+
+  // ================= HISTORY =================
+  selectHistoryItem(item: any) {
+    this.analysisResult = item.analysis;
+  }
+
+  deleteHistoryItem(event: Event, id: number) {
+    event.stopPropagation();
+    this.historyList = this.historyList.filter(x => x.id !== id);
+  }
+
+  // ================= SKILLS =================
+  addSkill() {
+    if (this.newSkillInput.trim()) {
+      this.userSkills.push(this.newSkillInput.trim());
+      this.newSkillInput = '';
     }
   }
 
-  setUser(user: User): void {
-    this.currentUserSubject.next(user);
-    localStorage.setItem('resume_user', JSON.stringify(user));
+  removeSkill(skill: string) {
+    this.userSkills = this.userSkills.filter(s => s !== skill);
   }
 
-  logout(): void {
-    this.currentUserSubject.next(null);
-    localStorage.removeItem('resume_user');
+  // ================= REWRITE =================
+  getRewrite() {
+    this.rewriting = true;
+
+    setTimeout(() => {
+      this.rewriteResult = {
+        rewritten_resume: "**Optimized Resume Content (AI)**",
+        changes_made: [
+          "Added ATS keywords",
+          "Improved formatting",
+          "Strengthened achievements"
+        ]
+      };
+      this.rewriting = false;
+    }, 1500);
   }
 
-  getCurrentUser(): User | null {
-    return this.currentUserSubject.value;
+  // ================= JOBS =================
+  // already defined above
+
+  // ================= INTERVIEW =================
+  getInterviewQuestions() {
+    this.loadingInterview = true;
+
+    setTimeout(() => {
+      this.interviewPrepList = [
+        {
+          type: "Technical",
+          question: "What is Angular change detection?",
+          answer: "Explain default vs OnPush strategy..."
+        },
+        {
+          type: "HR",
+          question: "Tell me about yourself",
+          answer: "Structure answer using STAR method..."
+        }
+      ];
+      this.loadingInterview = false;
+    }, 1500);
   }
 
-  // =====================
-  // RESUME ANALYSIS
-  // =====================
-  analyzeResume(file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('resume', file);
-
-    return this.http.post<any>(`${this.baseUrl}/analyze`, formData).pipe(
-      tap(result => this.analysisResultSubject.next(result)),
-      catchError(err => {
-        console.error('Analyze Resume Error:', err);
-        return of(null);
-      })
-    );
+  toggleInterviewQuestion(i: number) {
+    this.activeInterviewQuestion =
+      this.activeInterviewQuestion === i ? null : i;
   }
 
-  // =====================
-  // REWRITE RESUME
-  // =====================
-  rewriteResume(resumeText: string, jobDescription: string): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/rewrite`, {
-      resume_text: resumeText,
-      job_description: jobDescription
-    }).pipe(
-      catchError(err => {
-        console.error('Rewrite Error:', err);
-        return of(null);
-      })
-    );
+  // ================= AUTH =================
+  openAuth(mode: 'login' | 'signup') {
+    this.authMode = mode;
+    this.showAuthModal = true;
   }
 
-  // =====================
-  // INTERVIEW PREP
-  // =====================
-  interviewPrep(resumeText: string, role: string): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/interview-prep`, {
-      resume_text: resumeText,
-      role: role
-    }).pipe(
-      catchError(err => {
-        console.error('Interview Prep Error:', err);
-        return of(null);
-      })
-    );
+  closeAuth() {
+    this.showAuthModal = false;
   }
 
-  // =====================
-  // UPDATE ANALYSIS MANUALLY (optional)
-  // =====================
-  setAnalysisResult(result: any): void {
-    this.analysisResultSubject.next(result);
+  handleAuthSubmit() {
+    this.currentUser = {
+      name: this.authName || "User",
+      username: this.authUsername
+    };
+    this.closeAuth();
   }
 
-  getAnalysisResult(): any {
-    return this.analysisResultSubject.value;
+  logout() {
+    this.currentUser = null;
   }
+
+  // ================= UI =================
+  toggleDarkMode() {
+    this.isDarkMode = !this.isDarkMode;
+    document.body.classList.toggle('dark', this.isDarkMode);
+  }
+
+  downloadPDF() {
+    window.print();
+  }
+
 }
