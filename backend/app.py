@@ -464,7 +464,7 @@ def interview_prep():
         resume_text = data.get("resume_text", "")
 
         prompt = f"""
-        Generate interview questions for this role.
+        Generate at least 15 highly detailed, challenging interview questions specifically based on the provided resume and role. Include a mix of technical, behavioral, and architectural questions.
 
         Role:
         {role}
