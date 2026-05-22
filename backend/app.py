@@ -15,7 +15,7 @@ CORS(app, origins=["*"])
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 if not OPENROUTER_API_KEY:
-    print("⚠️ WARNING: OPENROUTER_API_KEY is missing!")
+    print("WARNING: OPENROUTER_API_KEY is missing!")
 
 # =========================
 # HEALTH CHECK
@@ -23,7 +23,7 @@ if not OPENROUTER_API_KEY:
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "message": "Resume AI Backend Running 🚀"
+        "message": "Resume AI Backend Running"
     })
 
 
@@ -51,307 +51,269 @@ def extract_resume_text(file):
 
 
 # =========================
-# SAFE KEYWORD MATCH
+# SAFE KEYWORD MATCHING
 # =========================
-def contains_skill(text, skill):
-    pattern = r'\b' + re.escape(skill.lower()) + r'\b'
-    return re.search(pattern, text.lower()) is not None
+def normalize_text(text):
+    return re.sub(r"\s+", " ", text.lower()).strip()
 
 
-# =========================
-# LOCAL ATS ANALYSIS
-# =========================
+def contains_phrase(text, phrase):
+    escaped = re.escape(phrase.lower()).replace(r"\ ", r"\s+")
+    pattern = rf"(?<![a-z0-9+#.]){escaped}(?![a-z0-9+#.])"
+    return re.search(pattern, text) is not None
+
+
+def detect_years_experience(text):
+    year_patterns = [
+        r"(\d+)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp)",
+        r"(?:experience|exp)\s*(?:of\s*)?(\d+)\+?\s*(?:years?|yrs?)"
+    ]
+
+    years = []
+    for pattern in year_patterns:
+        years.extend(int(match) for match in re.findall(pattern, text))
+
+    return max(years) if years else 0
+
+
 # =========================
 # LOCAL ATS ANALYSIS
 # =========================
 def local_resume_analysis(text):
 
-    text_lower = text.lower()
+    text_lower = normalize_text(text)
+    word_count = len(re.findall(r"\b\w+\b", text_lower))
 
-    # =========================
-    # SKILLS DATABASE
-    # =========================
-    skills_db = {
-        "python": 6,
-        "java": 6,
-        "c++": 5,
-        "angular": 8,
-        "react": 8,
-        "html": 4,
-        "css": 4,
-        "javascript": 6,
-        "typescript": 6,
-        "sql": 6,
-        "mysql": 5,
-        "mongodb": 7,
-        "node": 7,
-        "express": 6,
-        "flask": 7,
-        "django": 7,
-        "docker": 10,
-        "aws": 10,
-        "azure": 10,
-        "git": 5,
-        "github": 5,
-        "jenkins": 8,
-        "machine learning": 12,
-        "deep learning": 12,
-        "ai": 10,
-        "nlp": 10,
-        "data science": 12,
-        "tensorflow": 10,
-        "pytorch": 10,
-        "tailwind": 5,
-        "bootstrap": 4,
-        "spring boot": 10,
-        "kubernetes": 12,
-        "firebase": 6
-    }
+    skill_catalog = [
+        {"name": "Python", "aliases": ["python"], "weight": 6, "roles": ["backend", "ai", "data"]},
+        {"name": "Java", "aliases": ["java"], "weight": 6, "roles": ["backend"]},
+        {"name": "C++", "aliases": ["c++", "cpp"], "weight": 5, "roles": ["backend"]},
+        {"name": "HTML", "aliases": ["html", "html5"], "weight": 4, "roles": ["frontend"]},
+        {"name": "CSS", "aliases": ["css", "css3"], "weight": 4, "roles": ["frontend"]},
+        {"name": "JavaScript", "aliases": ["javascript", "js"], "weight": 7, "roles": ["frontend", "backend", "fullstack"]},
+        {"name": "TypeScript", "aliases": ["typescript", "ts"], "weight": 7, "roles": ["frontend", "fullstack"]},
+        {"name": "Angular", "aliases": ["angular"], "weight": 8, "roles": ["frontend", "fullstack"]},
+        {"name": "React", "aliases": ["react", "reactjs", "react.js"], "weight": 8, "roles": ["frontend", "fullstack"]},
+        {"name": "Node.js", "aliases": ["node", "node.js", "nodejs"], "weight": 7, "roles": ["backend", "fullstack"]},
+        {"name": "Express", "aliases": ["express", "express.js", "expressjs"], "weight": 6, "roles": ["backend", "fullstack"]},
+        {"name": "Flask", "aliases": ["flask"], "weight": 7, "roles": ["backend"]},
+        {"name": "Django", "aliases": ["django"], "weight": 7, "roles": ["backend"]},
+        {"name": "Spring Boot", "aliases": ["spring boot", "springboot"], "weight": 9, "roles": ["backend"]},
+        {"name": "SQL", "aliases": ["sql"], "weight": 6, "roles": ["backend", "data"]},
+        {"name": "MySQL", "aliases": ["mysql"], "weight": 5, "roles": ["backend", "data"]},
+        {"name": "MongoDB", "aliases": ["mongodb", "mongo db"], "weight": 7, "roles": ["backend", "fullstack"]},
+        {"name": "Firebase", "aliases": ["firebase"], "weight": 5, "roles": ["backend", "fullstack"]},
+        {"name": "Git", "aliases": ["git"], "weight": 5, "roles": ["frontend", "backend", "fullstack", "devops"]},
+        {"name": "GitHub", "aliases": ["github"], "weight": 4, "roles": ["frontend", "backend", "fullstack", "devops"]},
+        {"name": "Docker", "aliases": ["docker"], "weight": 8, "roles": ["backend", "devops"]},
+        {"name": "Kubernetes", "aliases": ["kubernetes", "k8s"], "weight": 10, "roles": ["devops"]},
+        {"name": "AWS", "aliases": ["aws", "amazon web services"], "weight": 9, "roles": ["backend", "devops"]},
+        {"name": "Azure", "aliases": ["azure", "microsoft azure"], "weight": 9, "roles": ["backend", "devops"]},
+        {"name": "Jenkins", "aliases": ["jenkins"], "weight": 7, "roles": ["devops"]},
+        {"name": "Machine Learning", "aliases": ["machine learning", "ml"], "weight": 11, "roles": ["ai", "data"]},
+        {"name": "Deep Learning", "aliases": ["deep learning"], "weight": 10, "roles": ["ai"]},
+        {"name": "NLP", "aliases": ["nlp", "natural language processing"], "weight": 9, "roles": ["ai", "data"]},
+        {"name": "TensorFlow", "aliases": ["tensorflow"], "weight": 9, "roles": ["ai"]},
+        {"name": "PyTorch", "aliases": ["pytorch"], "weight": 9, "roles": ["ai"]},
+        {"name": "Data Science", "aliases": ["data science"], "weight": 10, "roles": ["data"]},
+        {"name": "Pandas", "aliases": ["pandas"], "weight": 6, "roles": ["data", "ai"]},
+        {"name": "NumPy", "aliases": ["numpy"], "weight": 6, "roles": ["data", "ai"]},
+        {"name": "Matplotlib", "aliases": ["matplotlib"], "weight": 5, "roles": ["data"]},
+        {"name": "Tailwind CSS", "aliases": ["tailwind", "tailwind css"], "weight": 5, "roles": ["frontend"]},
+        {"name": "Bootstrap", "aliases": ["bootstrap"], "weight": 4, "roles": ["frontend"]},
+    ]
 
     detected_skills = []
-    missing_skills = []
+    detected_skill_names = set()
+    role_scores = {
+        "frontend": 0,
+        "backend": 0,
+        "fullstack": 0,
+        "ai": 0,
+        "data": 0,
+        "devops": 0
+    }
 
-    # =========================
-    # INITIAL SCORE
-    # =========================
-    score = 15
+    for skill in skill_catalog:
+        if any(contains_phrase(text_lower, alias) for alias in skill["aliases"]):
+            detected_skills.append(skill["name"])
+            detected_skill_names.add(skill["name"])
+            for role in skill["roles"]:
+                role_scores[role] += skill["weight"]
 
-    # =========================
-    # SKILL SCORING
-    # =========================
-    for skill, points in skills_db.items():
+    role_phrase_boosts = {
+        "frontend": ["frontend developer", "front end developer", "ui developer", "web developer"],
+        "backend": ["backend developer", "back end developer", "api developer", "server side"],
+        "fullstack": ["full stack", "fullstack", "mern", "mean stack"],
+        "ai": ["ai engineer", "ml engineer", "machine learning engineer"],
+        "data": ["data scientist", "data analyst", "analytics"],
+        "devops": ["devops", "cloud engineer", "site reliability"]
+    }
 
-        if skill in text_lower:
-            detected_skills.append(skill.title())
-            score += points
-        else:
-            missing_skills.append(skill.title())
+    for role, phrases in role_phrase_boosts.items():
+        if any(contains_phrase(text_lower, phrase) for phrase in phrases):
+            role_scores[role] += 12
 
-    # =========================
-    # EXPERIENCE BONUS
-    # =========================
-    experience_keywords = [
-        "internship",
-        "experience",
-        "developer",
-        "engineer",
-        "worked"
+    if role_scores["frontend"] >= 18 and role_scores["backend"] >= 18:
+        role_scores["fullstack"] += 16
+
+    role_map = {
+        "frontend": "Frontend Developer",
+        "backend": "Backend Developer",
+        "fullstack": "Full Stack Developer",
+        "ai": "AI/ML Engineer",
+        "data": "Data Scientist",
+        "devops": "DevOps Engineer"
+    }
+
+    best_key = max(role_scores, key=role_scores.get)
+    best_role = role_map[best_key] if role_scores[best_key] >= 12 else "Software Developer"
+
+    role_requirements = {
+        "Frontend Developer": ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Angular", "Git"],
+        "Backend Developer": ["Python", "Java", "Node.js", "SQL", "MongoDB", "Docker", "Git"],
+        "Full Stack Developer": ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Node.js", "SQL", "Git"],
+        "AI/ML Engineer": ["Python", "Machine Learning", "Deep Learning", "Pandas", "NumPy", "TensorFlow", "PyTorch"],
+        "Data Scientist": ["Python", "SQL", "Data Science", "Pandas", "NumPy", "Machine Learning", "Matplotlib"],
+        "DevOps Engineer": ["Docker", "Kubernetes", "AWS", "Azure", "Jenkins", "Git"],
+        "Software Developer": ["Git", "SQL", "JavaScript", "Python", "Problem Solving"]
+    }
+
+    missing_skills = [
+        skill for skill in role_requirements[best_role]
+        if skill not in detected_skill_names
     ]
 
-    experience_found = 0
-
-    for word in experience_keywords:
-        if word in text_lower:
-            experience_found += 1
-
-    score += experience_found * 3
-
-    # =========================
-    # PROJECT BONUS
-    # =========================
-    project_count = text_lower.count("project")
-
-    if project_count >= 4:
-        score += 12
-
-    elif project_count == 3:
-        score += 9
-
-    elif project_count == 2:
-        score += 6
-
-    elif project_count == 1:
-        score += 3
-
-    # =========================
-    # EDUCATION BONUS
-    # =========================
-    education_keywords = [
-        "bca",
-        "mca",
-        "btech",
-        "computer science",
-        "information technology"
+    years_experience = detect_years_experience(text_lower)
+    has_email = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text) is not None
+    has_phone = re.search(r"(\+?\d[\d\s().-]{8,}\d)", text) is not None
+    has_linkedin = "linkedin.com" in text_lower or "linkedin" in text_lower
+    has_github = "github.com" in text_lower or "GitHub" in detected_skill_names
+    has_education = any(contains_phrase(text_lower, item) for item in [
+        "bca", "mca", "btech", "b.tech", "be", "b.e", "computer science",
+        "information technology", "degree", "university", "college"
+    ])
+    has_summary = any(contains_phrase(text_lower, item) for item in [
+        "summary", "profile", "objective", "professional summary"
+    ])
+    project_count = len(re.findall(r"\bprojects?\b", text_lower))
+    action_verbs = [
+        "built", "developed", "created", "implemented", "designed", "deployed",
+        "optimized", "improved", "integrated", "managed", "led", "automated"
     ]
+    action_verb_count = sum(1 for verb in action_verbs if contains_phrase(text_lower, verb))
 
-    for edu in education_keywords:
-        if edu in text_lower:
-            score += 5
-            break
+    skill_score = min(35, sum(
+        skill["weight"] for skill in skill_catalog
+        if skill["name"] in detected_skill_names
+    ) * 0.75)
+    experience_score = min(15, years_experience * 3)
+    if any(contains_phrase(text_lower, item) for item in ["internship", "intern", "freelance", "experience", "worked"]):
+        experience_score = max(experience_score, 6)
 
-    # =========================
-    # LINKS BONUS
-    # =========================
-    if "github.com" in text_lower:
-        score += 4
+    project_score = min(10, project_count * 4)
+    education_score = 8 if has_education else 0
+    contact_score = sum([has_email, has_phone, has_linkedin, has_github]) * 2
 
-    if "linkedin.com" in text_lower:
-        score += 4
-
-    # =========================
-    # WORD COUNT BONUS
-    # =========================
-    word_count = len(text.split())
-
-    if word_count > 600:
-        score += 10
-
-    elif word_count > 350:
-        score += 7
-
-    elif word_count > 200:
-        score += 4
-
-    elif word_count < 100:
-        score -= 8
-
-    # =========================
-    # ROLE DETECTION
-    # =========================
-
-    frontend_score = 0
-    backend_score = 0
-    ai_score = 0
-    devops_score = 0
-    data_score = 0
-
-    frontend_keywords = [
-        "angular",
-        "react",
-        "html",
-        "css",
-        "javascript",
-        "typescript",
-        "tailwind"
-    ]
-
-    backend_keywords = [
-        "python",
-        "flask",
-        "django",
-        "node",
-        "express",
-        "mongodb",
-        "sql",
-        "mysql"
-    ]
-
-    ai_keywords = [
-        "machine learning",
-        "deep learning",
-        "tensorflow",
-        "pytorch",
-        "nlp",
-        "ai"
-    ]
-
-    devops_keywords = [
-        "docker",
-        "jenkins",
-        "aws",
-        "azure",
-        "kubernetes"
-    ]
-
-    data_keywords = [
-        "data science",
-        "pandas",
-        "numpy",
-        "matplotlib"
-    ]
-
-    for skill in frontend_keywords:
-        if skill in text_lower:
-            frontend_score += 1
-
-    for skill in backend_keywords:
-        if skill in text_lower:
-            backend_score += 1
-
-    for skill in ai_keywords:
-        if skill in text_lower:
-            ai_score += 1
-
-    for skill in devops_keywords:
-        if skill in text_lower:
-            devops_score += 1
-
-    for skill in data_keywords:
-        if skill in text_lower:
-            data_score += 1
-
-    # =========================
-    # BEST ROLE LOGIC
-    # =========================
-
-    if ai_score >= 3:
-        best_role = "AI/ML Engineer"
-
-    elif devops_score >= 3:
-        best_role = "DevOps Engineer"
-
-    elif frontend_score >= 4 and backend_score >= 4:
-        best_role = "Full Stack Developer"
-
-    elif frontend_score >= 4:
-        best_role = "Frontend Developer"
-
-    elif backend_score >= 4:
-        best_role = "Backend Developer"
-
-    elif data_score >= 3:
-        best_role = "Data Scientist"
-
+    if 250 <= word_count <= 800:
+        length_score = 10
+    elif 150 <= word_count < 250 or 800 < word_count <= 1000:
+        length_score = 7
+    elif 80 <= word_count < 150:
+        length_score = 4
     else:
-        best_role = "Software Developer"
+        length_score = 2
 
-    # =========================
-    # NORMALIZE SCORE
-    # =========================
+    structure_score = 0
+    structure_score += 4 if has_summary else 0
+    structure_score += min(6, action_verb_count)
 
-    if score > 95:
-        score = 95
+    score = round(
+        12 +
+        skill_score +
+        experience_score +
+        project_score +
+        education_score +
+        contact_score +
+        length_score +
+        structure_score
+    )
+    score = max(15, min(98, score))
 
-    if score < 25:
-        score = 25
-
-    # =========================
-    # IMPROVEMENTS
-    # =========================
     improvements = []
 
-    if "github.com" not in text_lower:
-        improvements.append("Add GitHub profile link.")
-
-    if "linkedin.com" not in text_lower:
-        improvements.append("Add LinkedIn profile.")
-
-    if "docker" not in text_lower:
-        improvements.append("Learn Docker for better ATS ranking.")
-
-    if "aws" not in text_lower:
-        improvements.append("Add cloud skills like AWS.")
-
+    if not has_email or not has_phone:
+        improvements.append("Add clear email and phone contact details near the top.")
+    if not has_linkedin:
+        improvements.append("Add a LinkedIn profile link.")
+    if not has_github and best_role in ["Frontend Developer", "Backend Developer", "Full Stack Developer", "AI/ML Engineer", "Data Scientist"]:
+        improvements.append("Add a GitHub or portfolio link with project code.")
+    if not has_summary:
+        improvements.append("Add a short professional summary targeted to the role.")
     if project_count < 2:
-        improvements.append("Add more real-world projects.")
-
+        improvements.append("Add at least two projects with tech stack, features, and measurable impact.")
+    if experience_score < 6:
+        improvements.append("Mention internships, freelance work, practical training, or real project experience.")
+    if action_verb_count < 4:
+        improvements.append("Start bullet points with strong action verbs like built, implemented, deployed, and optimized.")
     if word_count < 180:
-        improvements.append("Resume content is too short.")
+        improvements.append("Resume content is too short; add more role-relevant details and project outcomes.")
+    if missing_skills:
+        improvements.append(f"Add or strengthen role keywords for {best_role}: {', '.join(missing_skills[:5])}.")
 
-    if experience_found == 0:
-        improvements.append("Add internship or practical experience.")
+    if not improvements:
+        improvements.append("Resume is well aligned; tailor the summary and project bullets for each job description.")
 
-    # =========================
-    # FINAL RESPONSE
-    # =========================
     return {
         "ats_score": score,
-        "detected_skills": detected_skills[:15],
+        "detected_skills": detected_skills[:18],
         "missing_skills": missing_skills[:10],
         "best_suited_role": best_role,
-        "improvements": improvements,
+        "improvements": improvements[:8],
+        "analysis_summary": {
+            "word_count": word_count,
+            "years_experience": years_experience,
+            "projects_found": project_count,
+            "contact_complete": has_email and has_phone,
+            "role_scores": role_scores
+        },
         "extracted_text": text
     }
+
+# =========================
+# AI RESUME ANALYSIS
+# =========================
+def ai_resume_analysis(text):
+    prompt = f"""
+    You are an expert ATS (Applicant Tracking System) and technical recruiter.
+    Analyze the following resume text and extract the required information in JSON format.
+    
+    Resume Text:
+    {text}
+    
+    You MUST return ONLY valid JSON matching this exact structure, with no markdown formatting or extra text:
+    {{
+        "ats_score": (integer 0-100 based on quality, impact, and formatting),
+        "detected_skills": [(list of strings, up to 18 technical skills found)],
+        "missing_skills": [(list of strings, up to 10 important skills missing for the best suited role)],
+        "best_suited_role": (one of: "Frontend Developer", "Backend Developer", "Full Stack Developer", "AI/ML Engineer", "Data Scientist", "DevOps Engineer", or "Software Developer"),
+        "improvements": [(list of strings, up to 8 specific, actionable bullet points to improve the resume)],
+        "analysis_summary": {{
+            "word_count": (integer, estimated word count),
+            "years_experience": (integer, total years of experience, 0 if none),
+            "projects_found": (integer, number of projects),
+            "contact_complete": (boolean, true if email and phone are present),
+            "role_scores": {{"frontend": 0, "backend": 0, "fullstack": 0, "ai": 0, "data": 0, "devops": 0}}
+        }}
+    }}
+    """
+    
+    result = call_llm_json(prompt)
+    if result and "ats_score" in result:
+        result["extracted_text"] = text
+        return result
+    return None
+
 
 # =========================
 # OPENROUTER API CALL
@@ -367,7 +329,7 @@ def call_llm_json(prompt):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "meta-llama/llama-3-8b-instruct",
+                "model": "meta-llama/llama-3-8b-instruct:free",
                 "messages": [
                     {
                         "role": "user",
@@ -420,7 +382,12 @@ def analyze_resume():
                 "error": "Unable to extract text from PDF"
             }), 400
 
-        analysis = local_resume_analysis(text)
+        # Try highly accurate LLM analysis first
+        analysis = ai_resume_analysis(text)
+        
+        # Fallback to local rule-based analysis if LLM fails
+        if not analysis:
+            analysis = local_resume_analysis(text)
 
         return jsonify(analysis)
 
